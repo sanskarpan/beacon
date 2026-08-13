@@ -1,0 +1,5 @@
+name: flap-yaml
+steps:
+  - action: flap
+  - action: assert
+    name: hysteresis_zero_transitions_on_flap
