@@ -1,0 +1,267 @@
+// Package mesh provides SPIFFE identity, a simple CA, SDS, and intentions.
+//
+// Identity over IP: IPs are recycled within seconds in a container fleet, so
+// IP-based authorization is authorizing "whatever is at 10.0.3.17 right now".
+//
+// Short-lived leaf certs (default 24h, rotated at 50%): a compromised cert
+// expires before a CRL would propagate, so revocation is mostly unnecessary.
+package mesh
+
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
+	"math/big"
+	"net/url"
+	"sync"
+	"time"
+
+	"github.com/sanskar/beacon/pkg/clock"
+)
+
+// Identity is a SPIFFE workload identity.
+// Format: spiffe://beacon.local/ns/<namespace>/sa/<account>
+type Identity struct {
+	TrustDomain    string
+	Namespace      string
+	ServiceAccount string
+}
+
+// URI returns the SPIFFE ID.
+func (i Identity) URI() string {
+	td := i.TrustDomain
+	if td == "" {
+		td = "beacon.local"
+	}
+	return fmt.Sprintf("spiffe://%s/ns/%s/sa/%s", td, i.Namespace, i.ServiceAccount)
+}
+
+// Certificate is an issued leaf.
+type Certificate struct {
+	Identity  Identity
+	CertPEM   []byte
+	KeyPEM    []byte
+	NotBefore time.Time
+	NotAfter  time.Time
+}
+
+// CA is an internal certificate authority.
+type CA struct {
+	mu          sync.Mutex
+	clk         clock.Clock
+	key         *ecdsa.PrivateKey
+	cert        *x509.Certificate
+	certPEM     []byte
+	leafTTL     time.Duration
+	serial      *big.Int
+	entitlements map[string]map[string]bool // node/workload → allowed SPIFFE URIs
+}
+
+// NewCA creates a root CA.
+func NewCA(clk clock.Clock) (*CA, error) {
+	if clk == nil {
+		clk = clock.New()
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	serial, err := rand.Int(rand.Reader, big.NewInt(1<<62))
+	if err != nil {
+		return nil, err
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "beacon-ca"},
+		NotBefore:    clk.Now().Add(-time.Hour),
+		NotAfter:     clk.Now().Add(10 * 365 * 24 * time.Hour),
+		IsCA:         true,
+		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		return nil, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, err
+	}
+	return &CA{
+		clk:          clk,
+		key:          key,
+		cert:         cert,
+		certPEM:      pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		leafTTL:      24 * time.Hour,
+		serial:       big.NewInt(1),
+		entitlements: make(map[string]map[string]bool),
+	}, nil
+}
+
+// Bundle returns the trust bundle PEM.
+func (c *CA) Bundle() []byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]byte(nil), c.certPEM...)
+}
+
+// Entitle allows a workload key to request a SPIFFE URI.
+func (c *CA) Entitle(workload, spiffeURI string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entitlements[workload] == nil {
+		c.entitlements[workload] = make(map[string]bool)
+	}
+	c.entitlements[workload][spiffeURI] = true
+}
+
+// Sign issues a leaf cert with the SPIFFE URI as a SAN.
+// Rejects if the workload is not entitled to the identity.
+func (c *CA) Sign(workload string, id Identity) (*Certificate, error) {
+	uri := id.URI()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if allowed := c.entitlements[workload]; allowed == nil || !allowed[uri] {
+		// if no entitlements configured at all for anyone, allow (dev mode)
+		if len(c.entitlements) > 0 {
+			return nil, fmt.Errorf("workload %q not entitled to %s", workload, uri)
+		}
+	}
+
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	c.serial.Add(c.serial, big.NewInt(1))
+	now := c.clk.Now()
+	u, _ := url.Parse(uri)
+	tmpl := &x509.Certificate{
+		SerialNumber: new(big.Int).Set(c.serial),
+		Subject:      pkix.Name{CommonName: id.ServiceAccount},
+		NotBefore:    now,
+		NotAfter:     now.Add(c.leafTTL),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		URIs:         []*url.URL{u},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.cert, &leafKey.PublicKey, c.key)
+	if err != nil {
+		return nil, err
+	}
+	keyDER, err := x509.MarshalECPrivateKey(leafKey)
+	if err != nil {
+		return nil, err
+	}
+	return &Certificate{
+		Identity:  id,
+		CertPEM:   pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		KeyPEM:    pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}),
+		NotBefore: tmpl.NotBefore,
+		NotAfter:  tmpl.NotAfter,
+	}, nil
+}
+
+// ShouldRotate reports whether the cert is past 50% of its lifetime.
+func ShouldRotate(cert *Certificate, now time.Time) bool {
+	life := cert.NotAfter.Sub(cert.NotBefore)
+	return !now.Before(cert.NotBefore.Add(life / 2))
+}
+
+// Action is Allow or Deny.
+type Action string
+
+const (
+	Allow Action = "allow"
+	Deny  Action = "deny"
+)
+
+// Intention is L4 authorization by identity.
+type Intention struct {
+	Source      string // "web" or "*"
+	Destination string
+	Action      Action
+	Precedence  int // higher / more specific wins
+}
+
+// IntentionStore holds intentions.
+type IntentionStore struct {
+	mu   sync.RWMutex
+	list []Intention
+}
+
+// NewIntentionStore creates an empty store.
+func NewIntentionStore() *IntentionStore {
+	return &IntentionStore{}
+}
+
+// Upsert adds or replaces an intention.
+func (s *IntentionStore) Upsert(i Intention) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for idx, existing := range s.list {
+		if existing.Source == i.Source && existing.Destination == i.Destination {
+			s.list[idx] = i
+			return
+		}
+	}
+	s.list = append(s.list, i)
+}
+
+// Delete removes an intention.
+func (s *IntentionStore) Delete(source, dest string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keep := s.list[:0]
+	for _, i := range s.list {
+		if !(i.Source == source && i.Destination == dest) {
+			keep = append(keep, i)
+		}
+	}
+	s.list = keep
+}
+
+// List returns all intentions.
+func (s *IntentionStore) List() []Intention {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]Intention(nil), s.list...)
+}
+
+// Decide evaluates source → destination. More specific (higher precedence) wins.
+// Default deny if no match.
+func (s *IntentionStore) Decide(source, dest string) Action {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	bestPrec := -1
+	best := Deny
+	for _, i := range s.list {
+		if !match(i.Source, source) || !match(i.Destination, dest) {
+			continue
+		}
+		prec := i.Precedence
+		if prec == 0 {
+			// auto: specific > wildcard
+			prec = specificity(i.Source) + specificity(i.Destination)
+		}
+		if prec > bestPrec {
+			bestPrec = prec
+			best = i.Action
+		}
+	}
+	return best
+}
+
+func match(pattern, value string) bool {
+	return pattern == "*" || pattern == value
+}
+
+func specificity(s string) int {
+	if s == "*" {
+		return 0
+	}
+	return 10
+}
