@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test ./...
+      - name: test race
+        run: go test -race ./pkg/catalog/ ./pkg/health/ ./pkg/lb/ ./pkg/watch/
+      - name: build
+        run: |
+          go build -o bin/beacon ./cmd/beacon
+          go build -o bin/beacon-server ./cmd/beacon-server
+          go build -o bin/beacon-agent ./cmd/beacon-agent
+      - name: sim
+        run: go run ./cmd/beacon sim flap
+
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun run build

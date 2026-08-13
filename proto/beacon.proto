@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package beacon.v1;
+
+option go_package = "github.com/sanskar/beacon/pkg/api/grpcapi";
+
+// Discovery is the gRPC control/data plane for beacon.
+// Hand-implemented service shapes live in pkg/api/grpcapi until codegen is wired.
+service Discovery {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Deregister(DeregisterRequest) returns (RegisterResponse);
+  rpc Resolve(ResolveRequest) returns (ResolveResponse);
+  // Server streaming: first message is SNAPSHOT, then deltas.
+  rpc Watch(WatchRequest) returns (stream WatchEvent);
+  // Bidirectional multi-service watch.
+  rpc WatchMulti(stream WatchMultiRequest) returns (stream WatchEvent);
+}
+
+message Instance {
+  string id = 1;
+  string service = 2;
+  string node = 3;
+  string address = 4;
+  int32 port = 5;
+  repeated string tags = 6;
+  map<string, string> meta = 7;
+  int32 weight = 8;
+  string health = 9;
+  string region = 10;
+  string zone = 11;
+}
+
+message RegisterRequest { Instance instance = 1; }
+message RegisterResponse { uint64 index = 1; }
+message DeregisterRequest { string id = 1; }
+message ResolveRequest {
+  string service = 1;
+  bool passing = 2;
+}
+message ResolveResponse {
+  repeated Instance instances = 1;
+  uint64 index = 2;
+}
+message WatchRequest {
+  string service = 1;
+  uint64 from_index = 2;
+  bool passing = 3;
+}
+message WatchEvent {
+  string kind = 1; // SNAPSHOT | ADD | UPDATE | REMOVE
+  string service = 2;
+  repeated Instance instances = 3;
+  uint64 index = 4;
+}
+message WatchMultiRequest {
+  string op = 1; // subscribe | unsubscribe
+  string service = 2;
+  uint64 from_index = 3;
+}
+
+// CatalogDelta is piggybacked on SWIM gossip.
+message CatalogDelta {
+  string type = 1; // register | deregister | health
+  Instance instance = 2;
+  string instance_id = 3;
+  string health = 4;
+  uint64 index = 5;
+  string origin = 6;
+  uint64 incarnation = 7;
+  string trace_id = 8;
+}
