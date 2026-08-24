@@ -1,0 +1,7 @@
+name: partition-yaml
+steps:
+  - action: partition
+  - action: assert
+    name: ap_both_sides_write
+  - action: assert
+    name: cp_majority_writes
