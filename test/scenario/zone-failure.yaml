@@ -1,0 +1,5 @@
+name: zone-failure-yaml
+steps:
+  - action: zone-failure
+  - action: assert
+    name: gradual_overflow

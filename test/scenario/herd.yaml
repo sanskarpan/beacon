@@ -1,0 +1,6 @@
+name: herd-yaml
+steps:
+  - action: herd
+    watchers: 50
+  - action: assert
+    name: notifications_spread

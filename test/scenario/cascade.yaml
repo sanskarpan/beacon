@@ -1,0 +1,6 @@
+name: cascade-yaml
+steps:
+  - action: cascade
+    endpoints: 200
+  - action: assert
+    name: max_ejection_percent

@@ -1,0 +1,6 @@
+name: storm-yaml
+steps:
+  - action: storm
+    instances: 200
+  - action: assert
+    name: batching_reduces_bumps

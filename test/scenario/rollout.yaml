@@ -1,0 +1,8 @@
+name: rollout-yaml
+steps:
+  - action: rollout
+    instances: 10
+  - action: assert
+    name: rolling_max_unavailable_one
+  - action: assert
+    name: never_below_n_minus_1

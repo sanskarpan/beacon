@@ -1,0 +1,8 @@
+name: propagate-yaml
+steps:
+  - action: propagate
+    nodes: 30
+  - action: assert
+    name: all_nodes_see_instance
+  - action: assert
+    name: convergence_under_2s
