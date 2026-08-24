@@ -1,0 +1,12 @@
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /beacon-agent ./cmd/beacon-agent
+
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates
+COPY --from=build /beacon-agent /usr/local/bin/beacon-agent
+ENTRYPOINT ["beacon-agent"]
+CMD ["-server=http://server-1:8500"]
