@@ -1,0 +1,122 @@
+# docker-compose.yml — Production deploy artifacts for beacon (TODO-064).
+#
+# Starts 3 beacon-server nodes (AP mode with gossip), an agent, and the console.
+# Health probes documented below.
+#
+# Usage:
+#   docker compose up --build
+#   docker compose up --build -d  (detached)
+
+services:
+  # --- Servers (3-node AP gossip cluster) ---
+  server-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    command:
+      - "-http=:8500"
+      - "-dns=:8600"
+      - "-grpc=:8502"
+      - "-node=server-1"
+      - "-consistency=ap"
+    ports:
+      - "8500:8500"
+      - "8600:8600"
+      - "8502:8502"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/v1/agent/services"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - beacon
+
+  server-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    command:
+      - "-http=:8500"
+      - "-dns=:8600"
+      - "-grpc=:8502"
+      - "-node=server-2"
+      - "-consistency=ap"
+      - "-join=server-1"
+    ports:
+      - "8501:8500"
+      - "8601:8600"
+      - "8503:8502"
+    depends_on:
+      server-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/v1/agent/services"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - beacon
+
+  server-3:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    command:
+      - "-http=:8500"
+      - "-dns=:8600"
+      - "-grpc=:8502"
+      - "-node=server-3"
+      - "-consistency=ap"
+      - "-join=server-1"
+    ports:
+      - "8505:8500"
+      - "8602:8600"
+      - "8504:8502"
+    depends_on:
+      server-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/v1/agent/services"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - beacon
+
+  # --- Agent (registers service instances) ---
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    depends_on:
+      server-1:
+        condition: service_healthy
+    networks:
+      - beacon
+
+  # --- Console (web UI) ---
+  console:
+    build:
+      context: .
+      dockerfile: Dockerfile.console
+    ports:
+      - "3000:3000"
+    depends_on:
+      server-1:
+        condition: service_healthy
+    environment:
+      - BEACON_API_URL=http://server-1:8500
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - beacon
+
+networks:
+  beacon:
+    driver: bridge
