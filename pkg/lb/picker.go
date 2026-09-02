@@ -178,9 +178,10 @@ func (l *LeastRequest) Pick(info PickInfo) (*Endpoint, func(DoneInfo), error) {
 // client independently identifies the same least-loaded endpoint and stampedes
 // it. P2C's randomness breaks that synchronisation.
 type P2C struct {
-	mu  sync.RWMutex
-	eps []*Endpoint
-	rng *rand.Rand
+	mu    sync.RWMutex
+	eps   []*Endpoint
+	rng   *rand.Rand
+	rngMu sync.Mutex
 	// optional outcome callback for outlier detection
 	OnDone func(addr string, err error)
 }
@@ -202,23 +203,26 @@ func (p *P2C) Update(eps []*Endpoint) {
 func (p *P2C) Pick(info PickInfo) (*Endpoint, func(DoneInfo), error) {
 	_ = info
 	p.mu.RLock()
-	defer p.mu.RUnlock()
 	n := len(p.eps)
 	if n == 0 {
+		p.mu.RUnlock()
 		return nil, nil, ErrNoEndpoint
 	}
 	if n == 1 {
 		ep := p.eps[0]
+		p.mu.RUnlock()
 		ep.Inflight.Add(1)
 		return ep, p.done(ep), nil
 	}
+	p.rngMu.Lock()
 	a := p.rng.Intn(n)
-	// Pick distinct second without retry: choose from n-1 and skip a.
 	b := p.rng.Intn(n - 1)
+	p.rngMu.Unlock()
 	if b >= a {
 		b++
 	}
 	sa, sb := p.eps[a], p.eps[b]
+	p.mu.RUnlock()
 	wa, wb := float64(sa.Weight), float64(sb.Weight)
 	if wa <= 0 {
 		wa = 1
@@ -341,6 +345,7 @@ type LocalityPicker struct {
 	overprovision  float64 // default 1.4
 	panicThreshold float64 // default 0.5 — below this, route to all
 	inner          Picker  // usually P2C
+	innerMu        sync.Mutex
 }
 
 func NewLocalityPicker(eps []*Endpoint, zone, region string, inner Picker) *LocalityPicker {
@@ -384,7 +389,7 @@ func (l *LocalityPicker) overflowWeight(healthyPct float64) uint32 {
 
 func (l *LocalityPicker) Pick(info PickInfo) (*Endpoint, func(DoneInfo), error) {
 	l.mu.RLock()
-	eps := l.eps
+	eps := append([]*Endpoint(nil), l.eps...)
 	l.mu.RUnlock()
 	if len(eps) == 0 {
 		return nil, nil, ErrNoEndpoint
@@ -398,8 +403,11 @@ func (l *LocalityPicker) Pick(info PickInfo) (*Endpoint, func(DoneInfo), error) 
 		}
 	}
 	if float64(allHealthy)/float64(len(eps)) < l.panicThreshold {
+		l.innerMu.Lock()
 		l.inner.Update(eps)
-		return l.inner.Pick(info)
+		ep, done, err := l.inner.Pick(info)
+		l.innerMu.Unlock()
+		return ep, done, err
 	}
 
 	var p0, p1, p2 []*Endpoint
@@ -429,8 +437,11 @@ func (l *LocalityPicker) Pick(info PickInfo) (*Endpoint, func(DoneInfo), error) 
 		// last resort: all
 		candidates = eps
 	}
+	l.innerMu.Lock()
 	l.inner.Update(candidates)
-	return l.inner.Pick(info)
+	ep, done, err := l.inner.Pick(info)
+	l.innerMu.Unlock()
+	return ep, done, err
 }
 
 // ErrNoEndpoint means the pool is empty.
