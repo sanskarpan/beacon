@@ -23,6 +23,30 @@ import (
 	raftlib "github.com/sanskarpan/raft-consensus/pkg/raft"
 )
 
+var (
+	globalNodesMu sync.RWMutex
+	globalNodes   = map[string]*Node{}
+)
+
+func globalClusterNode(id string) *Node {
+	globalNodesMu.RLock()
+	n := globalNodes[id]
+	globalNodesMu.RUnlock()
+	return n
+}
+
+func registerGlobalNode(n *Node) {
+	globalNodesMu.Lock()
+	globalNodes[n.ID] = n
+	globalNodesMu.Unlock()
+}
+
+func unregisterGlobalNode(id string) {
+	globalNodesMu.Lock()
+	delete(globalNodes, id)
+	globalNodesMu.Unlock()
+}
+
 // CommandType for catalog log entries.
 type CommandType int
 
@@ -154,10 +178,11 @@ type chanTransport struct {
 	requestVoteFn     func(req *raftlib.RequestVoteRequest) *raftlib.RequestVoteResponse
 	installSnapshotFn func(req *raftlib.InstallSnapshotRequest) *raftlib.InstallSnapshotResponse
 	drop              int32
+	dropPeers         map[raftlib.ServerID]bool
 }
 
 func newChanTransport(id raftlib.ServerID) *chanTransport {
-	return &chanTransport{localID: id, peers: make(map[raftlib.ServerID]*chanTransport)}
+	return &chanTransport{localID: id, peers: make(map[raftlib.ServerID]*chanTransport), dropPeers: make(map[raftlib.ServerID]bool)}
 }
 
 func (t *chanTransport) SetLocalID(id raftlib.ServerID) {
@@ -180,8 +205,28 @@ func (t *chanTransport) setDrop(v bool) {
 	}
 }
 
-func (t *chanTransport) AppendEntries(_ context.Context, target raftlib.ServerID, req *raftlib.AppendEntriesRequest) (*raftlib.AppendEntriesResponse, error) {
+func (t *chanTransport) setDropPeer(target raftlib.ServerID, v bool) {
+	t.mu.Lock()
+	if v {
+		t.dropPeers[target] = true
+	} else {
+		delete(t.dropPeers, target)
+	}
+	t.mu.Unlock()
+}
+
+func (t *chanTransport) isDropped(target raftlib.ServerID) bool {
 	if atomic.LoadInt32(&t.drop) == 1 {
+		return true
+	}
+	t.mu.RLock()
+	dropped := t.dropPeers[target]
+	t.mu.RUnlock()
+	return dropped
+}
+
+func (t *chanTransport) AppendEntries(_ context.Context, target raftlib.ServerID, req *raftlib.AppendEntriesRequest) (*raftlib.AppendEntriesResponse, error) {
+	if t.isDropped(target) {
 		return nil, fmt.Errorf("network partition")
 	}
 	t.mu.RLock()
@@ -194,7 +239,7 @@ func (t *chanTransport) AppendEntries(_ context.Context, target raftlib.ServerID
 }
 
 func (t *chanTransport) RequestVote(_ context.Context, target raftlib.ServerID, req *raftlib.RequestVoteRequest) (*raftlib.RequestVoteResponse, error) {
-	if atomic.LoadInt32(&t.drop) == 1 {
+	if t.isDropped(target) {
 		return nil, fmt.Errorf("network partition")
 	}
 	t.mu.RLock()
@@ -207,7 +252,7 @@ func (t *chanTransport) RequestVote(_ context.Context, target raftlib.ServerID, 
 }
 
 func (t *chanTransport) InstallSnapshot(_ context.Context, target raftlib.ServerID, req *raftlib.InstallSnapshotRequest) (*raftlib.InstallSnapshotResponse, error) {
-	if atomic.LoadInt32(&t.drop) == 1 {
+	if t.isDropped(target) {
 		return nil, fmt.Errorf("network partition")
 	}
 	t.mu.RLock()
@@ -472,7 +517,7 @@ func NewCluster(ids []string, clk clock.Clock, bus *events.Bus) (*Cluster, error
 		if err := b.raft.Start(); err != nil {
 			return nil, err
 		}
-		c.nodes[b.id] = &Node{
+		n := &Node{
 			ID:    b.id,
 			Raft:  b.raft,
 			FSM:   b.fsm,
@@ -480,6 +525,8 @@ func NewCluster(ids []string, clk clock.Clock, bus *events.Bus) (*Cluster, error
 			clk:   clk,
 			bus:   bus,
 		}
+		c.nodes[b.id] = n
+		registerGlobalNode(n)
 	}
 	return c, nil
 }
@@ -490,6 +537,7 @@ func (c *Cluster) Shutdown() {
 	defer c.mu.Unlock()
 	for _, n := range c.nodes {
 		_ = n.Raft.Shutdown()
+		unregisterGlobalNode(n.ID)
 	}
 }
 
@@ -517,7 +565,8 @@ func (c *Cluster) Leader(timeout time.Duration) *Node {
 	return nil
 }
 
-// Partition isolates groupA from groupB (bidirectional drop on those nodes' transports).
+// Partition isolates groupA from groupB (bidirectional per-peer drop).
+// Intra-group traffic (b↔c inside majority) is preserved; only cross-group edges are dropped.
 func (c *Cluster) Partition(groupA, groupB []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -529,15 +578,15 @@ func (c *Cluster) Partition(groupA, groupB []string) {
 	for _, id := range groupB {
 		setB[id] = true
 	}
-	// Drop all RPCs from A and from B (simulates minority isolation when |A|<|B|).
-	// Full mesh drop between A and B: mark transports of nodes that only talk across.
-	// Simplest reliable approach used in tests: drop on minority side entirely.
 	for _, n := range c.nodes {
-		if setA[n.ID] && len(groupA) <= len(groupB) {
-			n.trans.setDrop(true)
-		}
-		if setB[n.ID] && len(groupB) < len(groupA) {
-			n.trans.setDrop(true)
+		for _, m := range c.nodes {
+			if n.ID == m.ID {
+				continue
+			}
+			cross := (setA[n.ID] && setB[m.ID]) || (setB[n.ID] && setA[m.ID])
+			if cross {
+				n.trans.setDropPeer(raftlib.ServerID(m.ID), true)
+			}
 		}
 	}
 }
@@ -548,6 +597,12 @@ func (c *Cluster) Heal() {
 	defer c.mu.Unlock()
 	for _, n := range c.nodes {
 		n.trans.setDrop(false)
+		for _, m := range c.nodes {
+			if n.ID == m.ID {
+				continue
+			}
+			n.trans.setDropPeer(raftlib.ServerID(m.ID), false)
+		}
 	}
 }
 
@@ -566,12 +621,28 @@ func (s *Store) Mode() string { return "cp" }
 
 func (s *Store) propose(ctx context.Context, cmd Command) (uint64, error) {
 	if s.node.Raft.State() != raftlib.StateLeader {
-		// Try leader if known
 		lid := string(s.node.Raft.Leader())
 		if lid == "" || lid == s.node.ID {
 			return 0, raftlib.ErrNotLeader
 		}
-		// Caller should retry on leader; surface clear error.
+		// Best-effort forward to leader if in same in-process cluster (test/sim).
+		// In prod, follower returns ErrNotLeader with leader hint and client retries on leader.
+		if leaderNode := globalClusterNode(lid); leaderNode != nil && leaderNode.Raft.State() == raftlib.StateLeader {
+			b, err := json.Marshal(cmd)
+			if err != nil {
+				return 0, err
+			}
+			res, err := leaderNode.Raft.Apply(ctx, b)
+			if err == nil {
+				var out struct {
+					Index uint64 `json:"index"`
+				}
+				if len(res) > 0 {
+					_ = json.Unmarshal(res, &out)
+				}
+				return out.Index, nil
+			}
+		}
 		return 0, fmt.Errorf("%w: leader is %s", raftlib.ErrNotLeader, lid)
 	}
 	b, err := json.Marshal(cmd)
