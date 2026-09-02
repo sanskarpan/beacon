@@ -4,6 +4,7 @@
 package swim
 
 import (
+	"sync"
 	"time"
 
 	"github.com/sanskar/beacon/pkg/gossip"
@@ -35,6 +36,8 @@ func (c *Cluster) Inner() *gswim.Cluster { return c.inner }
 // Adapter is a gossip.Membership backed by real SWIM.
 type Adapter struct {
 	node *gswim.Node
+	mu   sync.Mutex
+	bridges map[chan<- gossip.MemberEvent]chan gswim.Event
 }
 
 // NewNode starts a SWIM member on the cluster and returns a Membership adapter.
@@ -43,7 +46,7 @@ func (c *Cluster) NewNode(name, addr string, port int) (*Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Adapter{node: n}, nil
+	return &Adapter{node: n, bridges: make(map[chan<- gossip.MemberEvent]chan gswim.Event)}, nil
 }
 
 // Members implements gossip.Membership.
@@ -72,6 +75,9 @@ func (a *Adapter) Leave() error { return a.node.Leave() }
 func (a *Adapter) Subscribe(ch chan<- gossip.MemberEvent) {
 	// Bridge: SWIM events → beacon MemberEvent
 	bridge := make(chan gswim.Event, 64)
+	a.mu.Lock()
+	a.bridges[ch] = bridge
+	a.mu.Unlock()
 	a.node.Subscribe(bridge)
 	go func() {
 		for ev := range bridge {
@@ -87,10 +93,15 @@ func (a *Adapter) Subscribe(ch chan<- gossip.MemberEvent) {
 	}()
 }
 
-// Unsubscribe is a no-op for the SWIM bridge (channels are not tracked cross-side).
-// Prefer closing the consumer context in production code paths.
+// Unsubscribe removes a previously subscribed channel.
 func (a *Adapter) Unsubscribe(ch chan<- gossip.MemberEvent) {
-	_ = ch
+	a.mu.Lock()
+	bridge, ok := a.bridges[ch]
+	if ok {
+		delete(a.bridges, ch)
+		close(bridge)
+	}
+	a.mu.Unlock()
 }
 
 // Broadcast implements gossip.Membership — piggybacks on SWIM.
@@ -107,7 +118,15 @@ func (a *Adapter) OnBroadcast(fn func(from gossip.NodeID, payload []byte)) {
 func (a *Adapter) Fail() { a.node.Fail() }
 
 // Stop tears down the node.
-func (a *Adapter) Stop() { a.node.Stop() }
+func (a *Adapter) Stop() {
+	a.mu.Lock()
+	for _, bridge := range a.bridges {
+		close(bridge)
+	}
+	a.bridges = make(map[chan<- gossip.MemberEvent]chan gswim.Event)
+	a.mu.Unlock()
+	a.node.Stop()
+}
 
 // Node returns the underlying SWIM node.
 func (a *Adapter) Node() *gswim.Node { return a.node }
