@@ -82,6 +82,12 @@ func (r *Runner) RunYAML(sc *ScenarioFile) Result {
 				n = 100
 			}
 			last = r.Cascade(n)
+		case "convergence":
+			n := step.Nodes
+			if n <= 0 {
+				n = 100
+			}
+			last = r.Convergence(n)
 		case "rollout":
 			last = r.Rollout(step.Instances)
 		case "zone-failure", "zone_failure":
