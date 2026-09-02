@@ -3,7 +3,17 @@ tmp/
 data/
 *.test
 coverage.out
+coverage.html
 console/node_modules/
 console/dist/
 .DS_Store
 *.log
+.env
+.env.local
+vendor/
+.idea/
+.vscode/
+*.pb.go.bak
+pkg/api/pb/*.pb.go
+!pkg/api/pb/pb.go
+scripts/
