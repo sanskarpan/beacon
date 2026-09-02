@@ -1,0 +1,14 @@
+bin/
+tmp/
+data/
+console/node_modules/
+console/dist/
+.git/
+.gitignore
+*.out
+coverage.*
+.env
+vendor/
+.idea/
+.vscode/
+*.log
