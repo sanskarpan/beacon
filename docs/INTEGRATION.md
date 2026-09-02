@@ -18,7 +18,7 @@ type Membership interface {
 }
 ```
 
-`pkg/gossip.MemoryMembership` is the in-process fabric for tests and sim. Production wires the SWIM project behind this interface (the upstream module uses `internal/`, so a thin adapter package in that repo — or a replaceable vendor — is the integration path).
+`pkg/gossip.MemoryMembership` is the in-process fabric for tests and sim. Production wires the SWIM project behind this interface (the upstream module uses `internal/`, so a thin adapter package in that repo — or a replaceable vendor — is the integration path). In this repo `go.mod` has `replace` directives to local stubs `external/gossip-system` and `external/grpc-service` for CI; remove them when wiring the real modules.
 
 **Payoff:** when SWIM declares node N dead, every instance on N is marked critical immediately (~2s vs ~15s for health checks).
 
