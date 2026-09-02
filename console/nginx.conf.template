@@ -1,0 +1,21 @@
+server {
+    listen 3000;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Proxy API to control plane (env var BEACON_API_URL)
+    location /v1/ {
+        proxy_pass ${BEACON_API_URL}/v1/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location /health {
+        proxy_pass ${BEACON_API_URL}/health;
+    }
+    location /metrics {
+        proxy_pass ${BEACON_API_URL}/metrics;
+    }
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
