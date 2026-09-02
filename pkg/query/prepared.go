@@ -68,6 +68,9 @@ func (s *Store) Create(q *PreparedQuery) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if old, ok := s.byID[q.ID]; ok && old.Name != q.Name {
+		delete(s.byName, old.Name)
+	}
 	cp := *q
 	s.byID[q.ID] = &cp
 	s.byName[q.Name] = q.ID
@@ -114,7 +117,9 @@ func (s *Store) List() []*PreparedQuery {
 
 // Execute runs a prepared query against the local catalog, then failover DCs.
 func (s *Store) Execute(ctx context.Context, idOrName string) (*catalog.Result, error) {
-	_ = ctx
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	q, ok := s.Get(idOrName)
 	if !ok {
 		return nil, fmt.Errorf("prepared query not found: %s", idOrName)
@@ -124,18 +129,30 @@ func (s *Store) Execute(ctx context.Context, idOrName string) (*catalog.Result, 
 		Passing: q.PassingOnly,
 		Filter:  q.Filter,
 	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
 	res := s.catalog.GetNow(q.Service, opts)
 	if len(res.Instances) > 0 {
 		return res, nil
 	}
-	// Failover
+	// Failover — single RLock snapshot to avoid TOCTOU
 	s.mu.RLock()
 	dcs := append([]string(nil), q.Failover.Datacenters...)
+	remotes := make(map[string]store.CatalogStore, len(dcs))
+	for _, dc := range dcs {
+		remotes[dc] = s.remote[dc]
+	}
 	s.mu.RUnlock()
 	for _, dc := range dcs {
-		s.mu.RLock()
-		remote := s.remote[dc]
-		s.mu.RUnlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+		remote := remotes[dc]
 		if remote == nil {
 			continue
 		}
