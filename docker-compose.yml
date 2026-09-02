@@ -1,11 +1,12 @@
-# docker-compose.yml — Production deploy artifacts for beacon (TODO-064).
+# docker-compose.yml — Production deploy for beacon.
 #
 # Starts 3 beacon-server nodes (AP mode with gossip), an agent, and the console.
-# Health probes documented below.
+# Health: HTTP /health (control plane) and / (console).
 #
 # Usage:
 #   docker compose up --build
 #   docker compose up --build -d  (detached)
+#   BEACON_API_URL=http://server-1:8500 docker compose up
 
 services:
   # --- Servers (3-node AP gossip cluster) ---
@@ -13,6 +14,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
+      args:
+        VERSION: ${VERSION:-dev}
     command:
       - "-http=:8500"
       - "-dns=:8600"
@@ -23,12 +26,18 @@ services:
       - "8500:8500"
       - "8600:8600"
       - "8502:8502"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/v1/agent/services"]
-      interval: 5s
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/health"]
+      interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - beacon
 
@@ -36,26 +45,34 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
+      args:
+        VERSION: ${VERSION:-dev}
     command:
       - "-http=:8500"
       - "-dns=:8600"
       - "-grpc=:8502"
       - "-node=server-2"
       - "-consistency=ap"
-      - "-join=server-1"
+      - "-join=server-1:7946"
     ports:
       - "8501:8500"
       - "8601:8600"
       - "8503:8502"
+    restart: unless-stopped
     depends_on:
       server-1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/v1/agent/services"]
-      interval: 5s
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/health"]
+      interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - beacon
 
@@ -63,26 +80,34 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
+      args:
+        VERSION: ${VERSION:-dev}
     command:
       - "-http=:8500"
       - "-dns=:8600"
       - "-grpc=:8502"
       - "-node=server-3"
       - "-consistency=ap"
-      - "-join=server-1"
+      - "-join=server-1:7946"
     ports:
       - "8505:8500"
       - "8602:8600"
       - "8504:8502"
+    restart: unless-stopped
     depends_on:
       server-1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/v1/agent/services"]
-      interval: 5s
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8500/health"]
+      interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - beacon
 
@@ -91,9 +116,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.agent
+      args:
+        VERSION: ${VERSION:-dev}
     depends_on:
       server-1:
         condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - agent-data:/data
+    environment:
+      - BEACON_SERVER_URL=http://server-1:8500
     networks:
       - beacon
 
@@ -102,20 +134,31 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.console
+      args:
+        VERSION: ${VERSION:-dev}
     ports:
       - "3000:3000"
+    restart: unless-stopped
     depends_on:
       server-1:
         condition: service_healthy
     environment:
       - BEACON_API_URL=http://server-1:8500
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
-      interval: 10s
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/"]
+      interval: 15s
       timeout: 3s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     networks:
       - beacon
+
+volumes:
+  agent-data:
 
 networks:
   beacon:
