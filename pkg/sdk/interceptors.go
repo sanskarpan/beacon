@@ -74,9 +74,12 @@ func (c *Client) ClientDialOptions(chain InterceptorChain) []grpc.DialOption {
 	opts := []grpc.DialOption{
 		grpc.WithChainUnaryInterceptor(unary...),
 	}
+	var streams []grpc.StreamClientInterceptor
 	if chain != nil {
-		opts = append(opts, grpc.WithChainStreamInterceptor(chain.Stream()))
+		streams = append(streams, chain.Stream())
 	}
+	streams = append(streams, c.StreamOutcomeReporter())
+	opts = append(opts, grpc.WithChainStreamInterceptor(streams...))
 	return opts
 }
 
