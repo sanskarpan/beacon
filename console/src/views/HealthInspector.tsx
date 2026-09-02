@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useEventStore } from "../store/events";
 
 const STATES = ["passing", "fail×1", "fail×2", "fail×3 → critical", "pass×1", "pass×2 → passing"];
 
 export default function HealthInspector() {
   const { instances, events } = useEventStore();
+  const [selected, setSelected] = useState<string | null>(null);
   const all = Object.values(instances).flat();
   const healthEvents = events.filter((e) =>
     e.kind.startsWith("health") || e.kind.startsWith("check") || e.kind.startsWith("outlier")
@@ -11,6 +13,10 @@ export default function HealthInspector() {
   const flaps = events.filter((e) => e.kind === "health.flapping");
   const active = healthEvents.filter((e) => e.kind.startsWith("check") || e.kind === "health.changed");
   const passive = healthEvents.filter((e) => e.kind.startsWith("outlier"));
+  const selectedInstance = selected ? all.find((i) => i.id === selected) : null;
+  const selectedHistory = selected
+    ? events.filter((e) => e.instance === selected || e.detail?.includes(selected))
+    : [];
 
   return (
     <div className="space-y-4">
@@ -72,7 +78,13 @@ export default function HealthInspector() {
                 </tr>
               )}
               {all.map((i) => (
-                <tr key={i.id} className="border-t border-ink-700/50 font-mono text-xs">
+                <tr
+                  key={i.id}
+                  onClick={() => setSelected(i.id)}
+                  className={`border-t border-ink-700/50 font-mono text-xs cursor-pointer hover:bg-ink-800/50 ${
+                    selected === i.id ? "bg-ink-800" : ""
+                  }`}
+                >
                   <td className="px-4 py-2">{i.id}</td>
                   <td className="px-4 py-2">{i.service}</td>
                   <td className="px-4 py-2">
@@ -122,6 +134,48 @@ export default function HealthInspector() {
           </div>
         </div>
       </div>
+
+      {selected && (
+        <div className="rounded-xl border border-signal-violet/40 bg-ink-900/80 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-mono text-signal-violet">
+              CHECK HISTORY — {selected} {selectedInstance && `(${selectedInstance.service} · ${selectedInstance.address}:${selectedInstance.port})`}
+            </div>
+            <button
+              onClick={() => setSelected(null)}
+              className="text-xs text-slate-400 hover:text-white border border-ink-600 rounded px-2 py-0.5"
+            >
+              Close
+            </button>
+          </div>
+          {selectedInstance && (
+            <div className="mb-3 grid grid-cols-3 gap-2 text-xs font-mono">
+              <div className="rounded bg-ink-800 px-2 py-1">
+                <span className="text-slate-500">health</span>{" "}
+                <span className={selectedInstance.health === "passing" ? "text-signal-green" : "text-signal-red"}>
+                  {selectedInstance.health}
+                </span>
+              </div>
+              <div className="rounded bg-ink-800 px-2 py-1">
+                <span className="text-slate-500">checks</span> {selectedInstance.checks?.length ?? 0}
+              </div>
+              <div className="rounded bg-ink-800 px-2 py-1">
+                <span className="text-slate-500">weight</span> {selectedInstance.weight ?? 1}
+              </div>
+            </div>
+          )}
+          <div className="max-h-64 overflow-auto space-y-1 font-mono text-[11px]">
+            {selectedHistory.length === 0 && <div className="text-slate-600">No history for this instance — live bus will populate as checks run.</div>}
+            {selectedHistory.slice(0, 100).map((e, idx) => (
+              <div key={idx} className="text-slate-300 border-b border-ink-700/30 py-0.5 flex gap-2">
+                <span className="text-slate-500">{new Date(e.timestamp).toISOString().slice(11, 23)}</span>
+                <span className="text-signal-green">{e.kind}</span>
+                <span>{e.detail ?? e.service ?? ""}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
