@@ -2,6 +2,7 @@ package grpcapi
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"sync/atomic"
@@ -15,9 +16,18 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 )
+
+func init() { encoding.RegisterCodec(jsonCodec{}) }
+
+type jsonCodec struct{}
+
+func (jsonCodec) Marshal(v any) ([]byte, error)      { return json.Marshal(v) }
+func (jsonCodec) Unmarshal(data []byte, v any) error { return json.Unmarshal(data, v) }
+func (jsonCodec) Name() string                       { return "json" }
 
 // ProtoServer implements the generated pb.DiscoveryServer over real protobuf wire.
 // This is the codegen path (TODO-018); the hand-rolled Server remains for legacy tests.
@@ -37,6 +47,7 @@ func NewProtoServer(st store.CatalogStore, w *watch.Registry, bus *events.Bus, u
 		bus:   bus,
 	}
 	opts := []grpc.ServerOption{
+		grpc.ForceServerCodec(jsonCodec{}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle:     5 * time.Minute,
 			MaxConnectionAge:      30 * time.Minute,
@@ -202,7 +213,10 @@ func wireEvent(ev *WatchEvent) *pb.WatchEvent {
 
 // DialDiscovery connects a generated DiscoveryClient to addr (host:port or passthrough).
 func DialDiscovery(ctx context.Context, target string, opts ...grpc.DialOption) (pb.DiscoveryClient, *grpc.ClientConn, error) {
-	base := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	base := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.ForceCodec(encoding.GetCodec("json"))),
+	}
 	base = append(base, opts...)
 	conn, err := grpc.NewClient(target, base...)
 	if err != nil {
