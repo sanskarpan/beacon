@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskar/beacon/pkg/clock"
 	"github.com/sanskar/beacon/pkg/events"
 	"github.com/sanskar/beacon/pkg/gossip"
 	"github.com/sanskar/beacon/pkg/watch"
@@ -38,6 +39,7 @@ type Store struct {
 	membership  gossip.Membership
 	bus         *events.Bus
 	watch       *watch.Registry
+	clk         clock.Clock
 	incarnation map[string]uint64 // per-instance origin incarnation
 	// tombstones: instance ID → incarnation at deregister (monotone at equal incarnation)
 	tombstones map[string]uint64
@@ -46,6 +48,8 @@ type Store struct {
 	self     string
 	// pending full-state digests for anti-entropy overflow
 	pendingFull bool
+	stopCh      chan struct{}
+	membershipCh chan gossip.MemberEvent
 }
 
 // Config for the gossip store.
@@ -54,23 +58,44 @@ type Config struct {
 	Membership gossip.Membership
 	Bus        *events.Bus
 	Watch      *watch.Registry
+	Clock      clock.Clock
 }
 
 // New creates an AP store and wires membership + broadcast handlers.
 func New(cfg Config) *Store {
+	clk := cfg.Clock
+	if clk == nil {
+		clk = clock.New()
+	}
 	s := &Store{
 		local:       cfg.Local,
 		membership:  cfg.Membership,
 		bus:         cfg.Bus,
 		watch:       cfg.Watch,
+		clk:         clk,
 		incarnation: make(map[string]uint64),
 		tombstones:  make(map[string]uint64),
 		converge:    make(map[string]map[string]time.Time),
 		self:        cfg.Membership.LocalName(),
+		stopCh:      make(chan struct{}),
+		membershipCh: make(chan gossip.MemberEvent, 64),
 	}
 	cfg.Membership.OnBroadcast(s.onBroadcast)
-	go s.watchMembership(context.Background())
+	cfg.Membership.Subscribe(s.membershipCh)
+	go s.watchMembership()
 	return s
+}
+
+// Close stops background goroutines.
+func (s *Store) Close() {
+	select {
+	case <-s.stopCh:
+		return
+	default:
+		close(s.stopCh)
+		s.membership.Unsubscribe(s.membershipCh)
+		close(s.membershipCh)
+	}
 }
 
 func (s *Store) Mode() string { return "ap" }
@@ -93,7 +118,7 @@ func (s *Store) Register(ctx context.Context, inst *catalog.Instance) (uint64, e
 		Origin:      gossip.NodeID(s.self),
 		Incarnation: inc,
 		TraceID:     inst.TraceID,
-		OriginAt:    time.Now(),
+		OriginAt:    s.clk.Now(),
 	}
 	s.broadcast(d)
 	s.notifyWatch(inst.Service, "add", inst, idx, inst.TraceID)
@@ -104,18 +129,25 @@ func (s *Store) Register(ctx context.Context, inst *catalog.Instance) (uint64, e
 func (s *Store) Deregister(ctx context.Context, id string) (uint64, error) {
 	inst, ok := s.local.GetInstance(id)
 	svc := ""
-	var inc uint64
 	traceID := events.TraceFrom(ctx)
 	if ok {
 		svc = inst.Service
-		s.mu.Lock()
-		s.incarnation[id]++
-		inc = s.incarnation[id]
-		s.mu.Unlock()
 		if traceID == "" {
 			traceID = inst.TraceID
 		}
 	}
+	s.mu.Lock()
+	if _, exists := s.incarnation[id]; exists {
+		s.incarnation[id]++
+	} else {
+		// create tombstone even for unknown ID so deregister wins
+		s.incarnation[id] = 1
+		if tomb, ok := s.tombstones[id]; ok && tomb >= 1 {
+			s.incarnation[id] = tomb + 1
+		}
+	}
+	inc := s.incarnation[id]
+	s.mu.Unlock()
 	idx, err := s.local.Deregister(ctx, id)
 	if err != nil {
 		return 0, err
@@ -128,7 +160,7 @@ func (s *Store) Deregister(ctx context.Context, id string) (uint64, error) {
 		Origin:      gossip.NodeID(s.self),
 		Incarnation: inc,
 		TraceID:     traceID,
-		OriginAt:    time.Now(),
+		OriginAt:    s.clk.Now(),
 	}
 	s.broadcast(d)
 	if svc != "" {
@@ -138,6 +170,11 @@ func (s *Store) Deregister(ctx context.Context, id string) (uint64, error) {
 }
 
 func (s *Store) UpdateHealth(ctx context.Context, id string, h catalog.HealthStatus) (uint64, error) {
+	// Check old health to avoid broadcasting when status unchanged (H1)
+	var oldHealth catalog.HealthStatus
+	if inst, ok := s.local.GetInstance(id); ok {
+		oldHealth = inst.Health
+	}
 	idx, err := s.local.UpdateHealth(ctx, id, h)
 	if err != nil {
 		return 0, err
@@ -146,7 +183,10 @@ func (s *Store) UpdateHealth(ctx context.Context, id string, h catalog.HealthSta
 	if !ok {
 		return idx, nil
 	}
-	// Only broadcast if index actually bumped (status changed)
+	// Only broadcast if health actually changed (catalog no-bump invariant)
+	if oldHealth == h {
+		return idx, nil
+	}
 	s.mu.Lock()
 	s.incarnation[id]++
 	inc := s.incarnation[id]
@@ -160,7 +200,7 @@ func (s *Store) UpdateHealth(ctx context.Context, id string, h catalog.HealthSta
 		Origin:      gossip.NodeID(s.self),
 		Incarnation: inc,
 		TraceID:     events.TraceFrom(ctx),
-		OriginAt:    time.Now(),
+		OriginAt:    s.clk.Now(),
 	}
 	s.broadcast(d)
 	s.notifyWatch(inst.Service, "update", inst, idx, d.TraceID)
@@ -266,7 +306,7 @@ func (s *Store) ApplyDelta(d Delta) bool {
 				Detail:  d.Type.String(),
 			})
 		}
-		s.trackConvergeLocked(d.TraceID, s.self, time.Now())
+		s.trackConvergeLocked(d.TraceID, s.self, s.clk.Now())
 		// Memory fabric already full-meshes Broadcast. Multi-hop infection is
 		// only needed on real SWIM transports; rebroadcast here would loop forever
 		// because every peer re-applies with the same incarnation and re-sends.
@@ -280,13 +320,35 @@ func (s *Store) broadcast(d Delta) {
 		return
 	}
 	if len(payload) > gossip.MaxPiggybackBytes {
-		// overflow → anti-entropy path
+		// overflow → anti-entropy path (not silently dropped)
 		s.mu.Lock()
 		s.pendingFull = true
 		s.mu.Unlock()
+		if s.bus != nil {
+			s.bus.Publish(events.Event{
+				Kind:   events.EvAntiEntropySync,
+				Node:   s.self,
+				Detail: "gossip payload >512, requires full sync",
+				Meta:   map[string]any{"trace_id": d.TraceID, "instance": d.InstanceID},
+			})
+		}
 		return
 	}
 	_ = s.membership.Broadcast(payload)
+}
+
+// NeedsFullSync reports whether a payload overflow requires anti-entropy.
+func (s *Store) NeedsFullSync() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingFull
+}
+
+// ClearPendingFull clears the overflow flag after a successful FullSync/MerkleSync.
+func (s *Store) ClearPendingFull() {
+	s.mu.Lock()
+	s.pendingFull = false
+	s.mu.Unlock()
 }
 
 func (s *Store) onBroadcast(from gossip.NodeID, payload []byte) {
@@ -299,12 +361,11 @@ func (s *Store) onBroadcast(from gossip.NodeID, payload []byte) {
 }
 
 // watchMembership: node failure → all instances on that node critical immediately.
-func (s *Store) watchMembership(ctx context.Context) {
-	ch := make(chan gossip.MemberEvent, 64)
-	s.membership.Subscribe(ch)
+func (s *Store) watchMembership() {
+	ch := s.membershipCh
 	for {
 		select {
-		case <-ctx.Done():
+		case <-s.stopCh:
 			return
 		case ev, ok := <-ch:
 			if !ok {
@@ -315,7 +376,7 @@ func (s *Store) watchMembership(ctx context.Context) {
 				instances := s.local.InstancesOnNode(ev.Node.Name)
 				for _, inst := range instances {
 					// Critical, not deleted: node may return; keep registration + metadata.
-					_, _ = s.local.UpdateHealth(ctx, inst.ID, catalog.HealthCritical)
+					_, _ = s.local.UpdateHealth(context.Background(), inst.ID, catalog.HealthCritical)
 				}
 				if s.bus != nil {
 					s.bus.Publish(events.Event{
@@ -332,7 +393,7 @@ func (s *Store) watchMembership(ctx context.Context) {
 					if h == "" {
 						h = catalog.HealthWarning
 					}
-					_, _ = s.local.UpdateHealth(ctx, inst.ID, h)
+					_, _ = s.local.UpdateHealth(context.Background(), inst.ID, h)
 				}
 				if s.bus != nil {
 					s.bus.Publish(events.Event{Kind: events.EvNodeJoined, Node: ev.Node.Name})
@@ -410,6 +471,7 @@ func (s *Store) FullSync(remote *catalog.Snapshot) error {
 			Index:       inst.ModifyIndex,
 		})
 	}
+	s.ClearPendingFull()
 	return nil
 }
 
