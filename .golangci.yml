@@ -10,6 +10,9 @@ linters:
     - staticcheck
     - gocritic
     - misspell
+    - unused
+    - importas
+    - bodyclose
   settings:
     gocritic:
       enabled-tags:
@@ -28,3 +31,11 @@ issues:
     - path: _test\.go
       linters:
         - errcheck
+    - path: pkg/api/pb/pb.go
+      linters:
+        - revive
+        - staticcheck
+formatters:
+  enable:
+    - gofmt
+    - goimports

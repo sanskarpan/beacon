@@ -3,10 +3,14 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /beacon-agent ./cmd/beacon-agent
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$VERSION" -o /beacon-agent ./cmd/beacon-agent
 
-FROM alpine:3.19
-RUN apk add --no-cache ca-certificates
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tini && adduser -D -u 10001 beacon
 COPY --from=build /beacon-agent /usr/local/bin/beacon-agent
-ENTRYPOINT ["beacon-agent"]
-CMD ["-server=http://server-1:8500"]
+USER beacon
+VOLUME ["/data"]
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD wget -q --spider http://localhost:8500/health 2>/dev/null || exit 0
+ENTRYPOINT ["/sbin/tini", "--", "beacon-agent"]
+CMD ["-server=http://server-1:8500", "-data-dir=/data"]

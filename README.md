@@ -1,5 +1,11 @@
 # beacon
 
+[![CI](https://github.com/sanskar/beacon/actions/workflows/ci.yml/badge.svg)](https://github.com/sanskar/beacon/actions/workflows/ci.yml)
+[![Go Report](https://goreportcard.com/badge/github.com/sanskar/beacon)](https://goreportcard.com/report/github.com/sanskar/beacon)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sanskar/beacon.svg)](https://pkg.go.dev/github.com/sanskar/beacon)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Coverage](https://img.shields.io/badge/coverage-80%25-green)](https://github.com/sanskar/beacon/actions)
+
 **A Consul-class service discovery system** — catalog with monotonic indexing, TTL leases, agent-local health checking with hysteresis, gossip-driven propagation, watch/notify, DNS + HTTP + gRPC interfaces, an xDS control plane, and a client SDK with resolver + balancer.
 
 Beacon integrates two prior projects:
@@ -147,6 +153,39 @@ Key properties under test:
 - [INTEGRATION](docs/INTEGRATION.md)
 - [ANTI_ENTROPY](docs/ANTI_ENTROPY.md)
 
+## Configuration
+
+| Flag / Env | Default | Purpose |
+|---|---|---|
+| `--http` / `BEACON_HTTP` | `:8500` | HTTP API (`/v1/*`, `/health`, `/metrics`, `/v1/events`) |
+| `--dns` / `BEACON_DNS` | `:8600` | DNS (UDP+TCP) `A/AAAA/SRV`; TTL=0, `TC` on UDP 512 |
+| `--grpc` / `BEACON_GRPC` | `:8502` | gRPC `Discovery` (`Watch`/`WatchMulti`) + keepalive + `GracefulStop` |
+| `--consistency` | `ap` | `ap` (gossip) or `cp` (Raft `ReadIndex` linearizable) |
+| `--join` / `BEACON_JOIN` | — | SWIM seed `addr:port` |
+| `--data-dir` | `./data` | Agent persist `services.json` |
+| `--otel-endpoint` / `BEACON_OTEL_ENDPOINT` | — | OTLP gRPC endpoint |
+| `BEACON_API_URL` | `http://localhost:8500` | Console proxy target (vite `server.proxy`) |
+
+## API
+
+**HTTP (Consul-style):**
+- `PUT /v1/agent/service/register` · `PUT /v1/agent/service/deregister/:id`
+- `GET /v1/catalog/service/:name?index=&wait=&passing=&tag=&filter=&consistent=&stale=` → `X-Beacon-Index`, `X-Beacon-Stale`
+- `GET /v1/health/service/:name` · `GET /v1/catalog/services` · `GET /v1/agent/members`
+- `GET /v1/watch/stats` · `GET /v1/events` (SSE `data: {Event}`) · `GET /metrics` · `/health` · `/ready`
+
+**gRPC:**
+- `Discovery.Watch(WatchRequest) → stream WatchEvent` (snapshot+delta)
+- `Discovery.WatchMulti(stream WatchMultiRequest) → stream WatchEvent` (bidirectional)
+
+**DNS (port 8600):**
+- `payments.service.beacon` `A/AAAA/SRV` · `v2.payments.service.beacon` tag filter · `payments.service.dc1.beacon` datacenter
+
+**xDS:**
+- ADS `SotW` + `Delta` (`CDS→EDS→LDS→RDS` add, `LDS→RDS→EDS→CDS` remove), ACK/NACK via `error_detail`
+
+See `docs/API.md`, `docs/CONFIGURATION.md`, `docs/DEPLOYMENT.md`, `docs/OBSERVABILITY.md`.
+
 ## License
 
-Research / educational project.
+[MIT](LICENSE) — see `LICENSE`. `CHANGELOG.md` for version history. Security disclosures per `SECURITY.md`.
