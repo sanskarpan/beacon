@@ -116,6 +116,10 @@ func New(cfg Config) *Agent {
 	if maxStale <= 0 {
 		maxStale = 30 * time.Second
 	}
+	seed := cfg.Clock.Now().UnixNano()
+	if seed == 0 {
+		seed = 1
+	}
 	a := &Agent{
 		nodeName:    cfg.NodeName,
 		local:       make(map[string]*catalog.Instance),
@@ -124,7 +128,7 @@ func New(cfg Config) *Agent {
 		bus:         cfg.Bus,
 		clk:         cfg.Clock,
 		dataDir:     cfg.DataDir,
-		rng:         rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:         rand.New(rand.NewSource(seed)),
 		localCh:     make(chan struct{}, 1),
 		clusterSize: cfg.ClusterSize,
 		minSync:     100 * time.Millisecond,
@@ -161,28 +165,32 @@ func (a *Agent) Services() map[string]*catalog.Instance {
 
 // Register adds a local service and triggers immediate sync.
 func (a *Agent) Register(ctx context.Context, inst *catalog.Instance) error {
-	if inst.ID == "" {
-		inst.ID = fmt.Sprintf("%s-%s", inst.Service, trace.NewID()[:8])
-	}
-	inst.Node = a.nodeName
-	if inst.TraceID == "" {
-		inst.TraceID = events.TraceFrom(ctx)
-	}
-	if inst.TraceID == "" {
-		inst.TraceID = trace.NewID()
-	}
+	// Clone first to avoid mutating caller's object (race with concurrent sync)
 	cp := inst.Clone()
+	if cp.ID == "" {
+		cp.ID = fmt.Sprintf("%s-%s", cp.Service, trace.NewID()[:8])
+	}
+	cp.Node = a.nodeName
+	if cp.TraceID == "" {
+		cp.TraceID = events.TraceFrom(ctx)
+	}
+	if cp.TraceID == "" {
+		cp.TraceID = trace.NewID()
+	}
 
 	a.mu.Lock()
-	a.local[cp.ID] = cp
+	// Store a clone in local to avoid sharing with runner/client
+	localCp := cp.Clone()
+	a.local[localCp.ID] = localCp
 	a.mu.Unlock()
 
-	a.runner.Add(cp)
+	// Give runner and client their own clones to avoid shared mutation
+	a.runner.Add(cp.Clone())
 	_ = a.persist()
 	a.signalLocal()
 
 	// push immediately
-	_, err := a.client.Register(events.ContextWithTrace(ctx, cp.TraceID), cp)
+	_, err := a.client.Register(events.ContextWithTrace(ctx, cp.TraceID), cp.Clone())
 	return err
 }
 
@@ -376,15 +384,56 @@ func (a *Agent) Stop() {
 
 // ResolveService reads a service from the control plane (or cache).
 // When the server is unreachable, serves a cached result if fresher than MaxStale.
+// Honors Wait/MinIndex for blocking queries via polling (5 retries over Wait).
 func (a *Agent) ResolveService(ctx context.Context, service string, opts catalog.QueryOptions) (*catalog.Result, error) {
-	_ = ctx
 	if a.reader != nil {
-		res := a.reader.GetNow(service, opts)
-		if res != nil {
-			a.mu.Lock()
-			a.readCache[service] = cachedRead{result: res, at: a.clk.Now()}
-			a.mu.Unlock()
-			return res, nil
+		// If blocking query requested, poll until index advances or Wait expires
+		if opts.MinIndex != 0 && opts.Wait > 0 {
+			deadline := a.clk.Now().Add(opts.Wait)
+			for {
+				res := a.reader.GetNow(service, opts)
+				if res != nil {
+					if res.Index > opts.MinIndex {
+						a.mu.Lock()
+						a.readCache[service] = cachedRead{result: res, at: a.clk.Now()}
+						a.mu.Unlock()
+						return res, nil
+					}
+					// cache it even if not yet beyond MinIndex (for stale fallback)
+					a.mu.Lock()
+					a.readCache[service] = cachedRead{result: res, at: a.clk.Now()}
+					a.mu.Unlock()
+				}
+				if a.clk.Now().After(deadline) {
+					break
+				}
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-a.clk.After(50 * time.Millisecond):
+				}
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+			}
+		} else {
+			res := a.reader.GetNow(service, opts)
+			if res != nil {
+				// If MinIndex set, only return if index advances
+				if opts.MinIndex == 0 || res.Index > opts.MinIndex {
+					a.mu.Lock()
+					a.readCache[service] = cachedRead{result: res, at: a.clk.Now()}
+					a.mu.Unlock()
+					return res, nil
+				}
+				// cache for stale fallback even if not yet advanced
+				a.mu.Lock()
+				a.readCache[service] = cachedRead{result: res, at: a.clk.Now()}
+				a.mu.Unlock()
+				if opts.MinIndex == 0 {
+					return res, nil
+				}
+			}
 		}
 	}
 	// try local catalog instances we own as a last resort
