@@ -210,10 +210,12 @@ func (i *Instance) Equal(o *Instance) bool {
 
 func (i *Instance) canonical() *Instance {
 	c := i.Clone()
-	// strip volatile fields
+	// strip volatile fields (ModifyIndex/CreateIndex/TraceID/Incarnation are per-origin counters)
 	c.ModifyIndex = 0
 	c.CreateIndex = 0
 	c.TraceID = ""
+	c.Incarnation = 0
+	c.LastKnownHealth = ""
 	return c
 }
 

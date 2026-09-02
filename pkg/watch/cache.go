@@ -86,3 +86,19 @@ func (c *Cache) Len() int {
 	defer c.mu.RUnlock()
 	return len(c.events)
 }
+
+// Newest returns newest index.
+func (c *Cache) Newest() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.newest
+}
+
+// Events returns a snapshot of events.
+func (c *Cache) Events() []Event {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	cp := make([]Event, len(c.events))
+	copy(cp, c.events)
+	return cp
+}

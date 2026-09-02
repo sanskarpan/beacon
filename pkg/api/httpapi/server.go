@@ -18,8 +18,14 @@ import (
 	"github.com/sanskar/beacon/pkg/clock"
 	"github.com/sanskar/beacon/pkg/events"
 	"github.com/sanskar/beacon/pkg/gossip"
+	"github.com/sanskar/beacon/pkg/lab"
+	"github.com/sanskar/beacon/pkg/mesh"
+	"github.com/sanskar/beacon/pkg/query"
+	"github.com/sanskar/beacon/pkg/sim"
 	"github.com/sanskar/beacon/pkg/store"
+	"github.com/sanskar/beacon/pkg/telemetry"
 	"github.com/sanskar/beacon/pkg/watch"
+	"github.com/sanskar/beacon/pkg/xds"
 	"golang.org/x/time/rate"
 )
 
@@ -35,9 +41,20 @@ type Server struct {
 	onDeregister func(id, service string, idx uint64)
 	mux          *http.ServeMux
 	// rate limit per remote addr
-	limiters sync.Map
+	limiters sync.Map // string -> *httpLimiterEntry
 	rps      rate.Limit
 	burst    int
+	queries    *query.Store
+	intentions *mesh.IntentionStore
+	xds        *xds.Server
+	calls      *telemetry.CallGraph
+	lab        *lab.ConsistencyLab
+}
+
+type httpLimiterEntry struct {
+	lim  *rate.Limiter
+	last time.Time
+	mu   sync.Mutex
 }
 
 // Config for the HTTP server.
@@ -52,6 +69,11 @@ type Config struct {
 	OnDeregister func(id, service string, idx uint64)
 	RPS          float64
 	Burst        int
+	Queries      *query.Store
+	Intentions   *mesh.IntentionStore
+	XDS          *xds.Server
+	Calls        *telemetry.CallGraph
+	Lab          *lab.ConsistencyLab
 }
 
 // New creates the HTTP API.
@@ -65,6 +87,18 @@ func New(cfg Config) *Server {
 	if cfg.Burst <= 0 {
 		cfg.Burst = 100
 	}
+	calls := cfg.Calls
+	if calls == nil {
+		calls = telemetry.NewCallGraph(cfg.Clock, cfg.Bus, 0)
+	}
+	intentions := cfg.Intentions
+	if intentions == nil {
+		intentions = mesh.NewIntentionStore()
+	}
+	labInst := cfg.Lab
+	if labInst == nil {
+		labInst = lab.NewConsistencyLab(cfg.Clock, cfg.Bus)
+	}
 	s := &Server{
 		store:        cfg.Store,
 		agent:        cfg.Agent,
@@ -77,6 +111,11 @@ func New(cfg Config) *Server {
 		mux:          http.NewServeMux(),
 		rps:          rate.Limit(cfg.RPS),
 		burst:        cfg.Burst,
+		queries:      cfg.Queries,
+		intentions:   intentions,
+		xds:          cfg.XDS,
+		calls:        calls,
+		lab:          labInst,
 	}
 	s.routes()
 	return s
@@ -93,6 +132,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/catalog/services", s.wrap(s.catalogServices))
 	s.mux.HandleFunc("/v1/catalog/service/", s.wrap(s.catalogService))
 	s.mux.HandleFunc("/v1/health/service/", s.wrap(s.healthService))
+	s.mux.HandleFunc("/v1/query", s.wrap(s.preparedQueryRoot))
+	s.mux.HandleFunc("/v1/query/", s.wrap(s.preparedQueryItem))
+	s.mux.HandleFunc("/v1/connect/intentions", s.wrap(s.intentionsRoot))
+	s.mux.HandleFunc("/v1/connect/intentions/", s.wrap(s.intentionsItem))
+	s.mux.HandleFunc("/v1/xds/status", s.wrap(s.xdsStatus))
+	s.mux.HandleFunc("/v1/telemetry/calls", s.wrap(s.telemetryCalls))
+	s.mux.HandleFunc("/v1/telemetry/calls/record", s.wrap(s.telemetryRecord))
+	s.mux.HandleFunc("/v1/watch/stats", s.wrap(s.watchStats))
+	s.mux.HandleFunc("/v1/lab/consistency", s.wrap(s.labConsistency))
+	s.mux.HandleFunc("/v1/lab/consistency/", s.wrap(s.labConsistencyAction))
+	s.mux.HandleFunc("/v1/bench/gossip-contrast", s.wrap(s.gossipContrast))
 	s.mux.HandleFunc("/v1/events", s.sse)
 	s.mux.Handle("/metrics", promhttp.Handler())
 	s.mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -125,8 +175,6 @@ func (s *Server) wrap(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) allow(r *http.Request) bool {
-	// Key by host only so ephemeral source ports (httptest, short-lived
-	// clients) share one limiter per client IP.
 	key := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		key = host
@@ -134,8 +182,28 @@ func (s *Server) allow(r *http.Request) bool {
 	if key == "" {
 		key = "unknown"
 	}
-	v, _ := s.limiters.LoadOrStore(key, rate.NewLimiter(s.rps, s.burst))
-	return v.(*rate.Limiter).Allow()
+	now := s.clk.Now()
+	// opportunistic GC when map grows
+	var count int
+	s.limiters.Range(func(k, v any) bool { count++; return count <= 512 })
+	if count > 512 {
+		s.limiters.Range(func(k, v any) bool {
+			e := v.(*httpLimiterEntry)
+			e.mu.Lock()
+			idle := now.Sub(e.last)
+			e.mu.Unlock()
+			if idle > 10*time.Minute {
+				s.limiters.Delete(k)
+			}
+			return true
+		})
+	}
+	val, _ := s.limiters.LoadOrStore(key, &httpLimiterEntry{lim: rate.NewLimiter(s.rps, s.burst), last: now})
+	e := val.(*httpLimiterEntry)
+	e.mu.Lock()
+	e.last = now
+	e.mu.Unlock()
+	return e.lim.Allow()
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
@@ -278,6 +346,10 @@ func (s *Server) blockingRead(w http.ResponseWriter, r *http.Request, service st
 			opts.Wait = d
 		}
 	}
+	// cap wait to avoid holding handlers forever (M11)
+	if opts.Wait > 5*time.Minute {
+		opts.Wait = 5 * time.Minute
+	}
 	if q.Get("passing") == "true" || healthPath && q.Get("passing") != "false" {
 		// health path defaults to all; passing=true filters
 		if q.Get("passing") == "true" {
@@ -373,6 +445,14 @@ func writeErr(w http.ResponseWriter, status int, code, msg string) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(apiError{Code: code, Message: msg})
 }
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// Ensure sim import used (gossip contrast)
+var _ = sim.MeasureGossipContrast
 
 // Ensure context used
 var _ = context.Background

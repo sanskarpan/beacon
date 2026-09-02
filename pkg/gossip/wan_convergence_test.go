@@ -174,6 +174,8 @@ func TestWAN_PartitionBetweenDCs(t *testing.T) {
 
 	nodes["dc1-n1"].Fail()
 	clk.Advance(500 * time.Millisecond)
+	// Allow async subscriber goroutines to run (real time yield).
+	time.Sleep(20 * time.Millisecond)
 
 	mu.Lock()
 	dc2AfterPostHeal := dc2Events

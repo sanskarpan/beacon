@@ -19,14 +19,14 @@ type InstanceLeaf struct {
 	Incarnation uint64 `json:"incarnation"`
 	Health      string `json:"health"`
 	ModifyIndex uint64 `json:"modify_index"`
-	// Hash is sha256 of the leaf content (id|inc|health|index).
+	// Hash is sha256 of the leaf content (all identity fields).
 	Hash string `json:"hash"`
 }
 
 // Digest is a compact Merkle summary of the local catalog for anti-entropy.
 //
 // Algorithm (documented cost):
-//  1. Sort instance IDs and hash each leaf: H(id|incarnation|health|modify_index).
+//  1. Sort instance IDs and hash each leaf: H(all identity fields).
 //  2. Pairwise reduce (Merkle) to a single root; odd leaves are promoted.
 //  3. Exchange roots. If equal → done (O(1) round-trip, O(0) payload).
 //  4. If unequal, exchange leaf digests and transfer only missing/stale instances
@@ -35,16 +35,14 @@ type InstanceLeaf struct {
 // Cost: build O(n log n) sort + O(n) hash; exchange O(1) for root or O(n) leaf
 // digests on mismatch; transfer O(k) for k differing instances.
 type Digest struct {
-	Root  string         `json:"root"`
-	Count int            `json:"count"`
-	Leaves []InstanceLeaf `json:"leaves,omitempty"`
+	Root       string            `json:"root"`
+	Count      int               `json:"count"`
+	Leaves     []InstanceLeaf    `json:"leaves,omitempty"`
+	Tombstones map[string]uint64 `json:"tombstones,omitempty"`
 }
 
 // BuildDigest constructs a Merkle digest from the local catalog.
 // includeLeaves=false returns only the root (cheap equality check).
-//
-// Leaf identity is (id, incarnation, health) — not ModifyIndex, which is local
-// and would make equal catalogs hash differently across nodes.
 func (s *Store) BuildDigest(includeLeaves bool) Digest {
 	snap := s.local.Snapshot()
 	leaves := make([]InstanceLeaf, 0, len(snap.Instances))
@@ -65,21 +63,57 @@ func (s *Store) BuildDigest(includeLeaves bool) Digest {
 			Health:      string(inst.Health),
 			ModifyIndex: inst.ModifyIndex,
 		}
-		leaf.Hash = hashLeaf(leaf)
+		leaf.Hash = hashInstance(inst, inc)
 		leaves = append(leaves, leaf)
 	}
 	sort.Slice(leaves, func(i, j int) bool { return leaves[i].ID < leaves[j].ID })
 	root := merkleRoot(leaves)
-	d := Digest{Root: root, Count: len(leaves)}
+	s.mu.Lock()
+	tombCopy := make(map[string]uint64, len(s.tombstones))
+	for k, v := range s.tombstones {
+		tombCopy[k] = v
+	}
+	s.mu.Unlock()
+	d := Digest{Root: root, Count: len(leaves), Tombstones: tombCopy}
 	if includeLeaves {
 		d.Leaves = leaves
+	}
+	// include tombstones in root hash
+	if len(tombCopy) > 0 {
+		keys := make([]string, 0, len(tombCopy))
+		for k := range tombCopy {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		h := sha256.New()
+		h.Write([]byte(root))
+		for _, k := range keys {
+			h.Write([]byte(fmt.Sprintf("|tomb:%s:%d", k, tombCopy[k])))
+		}
+		d.Root = hex.EncodeToString(h.Sum(nil))
 	}
 	return d
 }
 
 func hashLeaf(l InstanceLeaf) string {
-	// Cross-node stable: id + incarnation + health (not local ModifyIndex).
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", l.ID, l.Incarnation, l.Health)))
+	return hex.EncodeToString(h[:])
+}
+
+func hashInstance(inst *catalog.Instance, inc uint64) string {
+	tags := append([]string(nil), inst.Tags...)
+	sort.Strings(tags)
+	tagsStr := strings.Join(tags, ",")
+	metaKeys := make([]string, 0, len(inst.Meta))
+	for k := range inst.Meta {
+		metaKeys = append(metaKeys, k)
+	}
+	sort.Strings(metaKeys)
+	metaStr := ""
+	for _, k := range metaKeys {
+		metaStr += fmt.Sprintf("%s=%s;", k, inst.Meta[k])
+	}
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d|%d|%s|%s|%d|%s", inst.ID, inst.Service, inst.Address, inst.Port, inst.Weight, tagsStr, metaStr, inc, inst.Health)))
 	return hex.EncodeToString(h[:])
 }
 
@@ -159,10 +193,9 @@ func (s *Store) MerkleSync(remote Digest, remoteInstances map[string]*catalog.In
 				continue
 			}
 			leaf := InstanceLeaf{
-				ID: inst.ID, Service: inst.Service, Incarnation: inst.Incarnation,
-				Health: string(inst.Health), ModifyIndex: inst.ModifyIndex,
+				ID: inst.ID, Service: inst.Service, Incarnation: inst.Incarnation, Health: string(inst.Health), ModifyIndex: inst.ModifyIndex,
 			}
-			leaf.Hash = hashLeaf(leaf)
+			leaf.Hash = hashInstance(inst, inst.Incarnation)
 			remoteLeaves = append(remoteLeaves, leaf)
 		}
 	}
@@ -185,10 +218,43 @@ func (s *Store) MerkleSync(remote Digest, remoteInstances map[string]*catalog.In
 		b, _ := json.Marshal(inst)
 		res.SentBytes += len(b)
 	}
+	// Handle deletions via tombstones: remote tombstone should deregister local instance
+	for id, tombInc := range remote.Tombstones {
+		s.mu.Lock()
+		localInc := s.incarnation[id]
+		if tomb, ok := s.tombstones[id]; ok && tomb > localInc {
+			localInc = tomb
+		}
+		if inst, ok := s.local.GetInstance(id); ok {
+			if tombInc >= localInc && tombInc >= inst.Incarnation {
+				s.mu.Unlock()
+				s.ApplyDelta(Delta{
+					Type:        gossip.DeltaDeregister,
+					InstanceID:  id,
+					Instance:    inst,
+					Incarnation: tombInc,
+					Index:       inst.ModifyIndex + 1,
+				})
+				res.Transferred++
+				continue
+			}
+		} else {
+			// local has tombstone or no instance, ensure we have tombstone
+			if tombInc > localInc {
+				s.tombstones[id] = tombInc
+				s.incarnation[id] = tombInc
+			}
+		}
+		s.mu.Unlock()
+	}
 	// Leaf digest exchange cost (approximate)
 	if b, err := json.Marshal(remoteLeaves); err == nil {
 		res.SentBytes += len(b)
 	}
+	if b, err := json.Marshal(remote.Tombstones); err == nil {
+		res.SentBytes += len(b)
+	}
+	s.ClearPendingFull()
 	return res
 }
 

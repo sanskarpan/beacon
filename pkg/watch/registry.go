@@ -41,6 +41,7 @@ type Registry struct {
 	// fan-out: 200µs per watcher, cap 500ms
 	perWatcherSpread time.Duration
 	maxSpread        time.Duration
+	nextID   atomic.Uint64
 }
 
 type watcher struct {
@@ -95,7 +96,7 @@ func (r *Registry) Watch(ctx context.Context, service string, fromIndex uint64) 
 	}
 
 	r.mu.Lock()
-	w.id = uint64(len(r.watchers[service]) + 1)
+	w.id = r.nextID.Add(1)
 	r.watchers[service] = append(r.watchers[service], w)
 	r.mu.Unlock()
 
@@ -272,7 +273,7 @@ func (r *Registry) remove(target *watcher) {
 	ws := r.watchers[target.service]
 	keep := ws[:0]
 	for _, w := range ws {
-		if w.id != target.id {
+		if w != target {
 			keep = append(keep, w)
 		}
 	}
@@ -290,9 +291,39 @@ func (r *Registry) WatcherCount(service string) int {
 	return len(r.watchers[service])
 }
 
+// Stats returns watcher table for console.
+func (r *Registry) Stats() map[string]any {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	total := 0
+	list := []map[string]any{}
+	for svc, ws := range r.watchers {
+		total += len(ws)
+		for _, w := range ws {
+			list = append(list, map[string]any{
+				"service": svc,
+				"id":      w.id,
+				"index":   w.lastIdx,
+			})
+		}
+	}
+	return map[string]any{
+		"total_watchers": total,
+		"watchers":       list,
+		"cache": map[string]any{
+			"oldest": r.cache.Oldest(),
+			"newest": r.cache.Newest(),
+			"size":   len(r.cache.Events()),
+		},
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Blocking query helpers
 // ---------------------------------------------------------------------------
+
+var globalJitterMu sync.Mutex
+var globalJitterRng = rand.New(rand.NewSource(1))
 
 // JitterDuration applies ±fraction jitter (default 16%) to break phase-lock herds.
 func JitterDuration(d time.Duration, fraction float64, rng *rand.Rand) time.Duration {
@@ -303,7 +334,12 @@ func JitterDuration(d time.Duration, fraction float64, rng *rand.Rand) time.Dura
 		fraction = 0.16
 	}
 	if rng == nil {
-		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+		globalJitterMu.Lock()
+		rng = globalJitterRng
+		// use Float64 under lock to avoid per-request NewSource
+		f := 1 + (rng.Float64()*2-1)*fraction
+		globalJitterMu.Unlock()
+		return time.Duration(float64(d) * f)
 	}
 	// uniform in [1-f, 1+f]
 	f := 1 + (rng.Float64()*2-1)*fraction

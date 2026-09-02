@@ -17,15 +17,14 @@ type InterceptorChain interface {
 func ChainFrom(interceptors ...grpc.UnaryClientInterceptor) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any,
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		chain := invoker
+		next := invoker
 		for i := len(interceptors) - 1; i >= 0; i-- {
-			ic := interceptors[i]
-			next := chain
-			chain = func(ctx context.Context, method string, req, reply any,
-				cc *grpc.ClientConn, opts ...grpc.CallOption) error {
-				return ic(ctx, method, req, reply, cc, next, opts...)
-			}
+			next = func(idx int, nxt grpc.UnaryInvoker) grpc.UnaryInvoker {
+				return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+					return interceptors[idx](ctx, method, req, reply, cc, nxt, opts...)
+				}
+			}(i, next)
 		}
-		return chain(ctx, method, req, reply, cc, opts...)
+		return next(ctx, method, req, reply, cc, opts...)
 	}
 }

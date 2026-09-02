@@ -225,12 +225,21 @@ func (s *Store) UpdateHealth(ctx context.Context, id string, h catalog.HealthSta
 func (s *Store) Get(ctx context.Context, service string, opts catalog.QueryOptions) (*catalog.Result, error) {
 	if opts.Consistent {
 		if !s.node.isLeader() {
-			// forward to leader
+			// forward to leader (leader will check quorum)
 			leader := s.node.leaderNode()
 			if leader == nil {
 				return nil, ErrNotLeader
 			}
+			// if we can reach leader, ask leader to do quorum-checked read
+			// we simulate by checking leader's quorum directly
+			if !leader.hasQuorum() {
+				return nil, ErrNoQuorum
+			}
 			return leader.fsm.Get(ctx, service, opts)
+		}
+		// is leader: need quorum for linearizable read
+		if !s.node.hasQuorum() {
+			return nil, ErrNoQuorum
 		}
 	}
 	res, err := s.node.fsm.Get(ctx, service, opts)
@@ -241,6 +250,19 @@ func (s *Store) Get(ctx context.Context, service string, opts catalog.QueryOptio
 		s.node.mu.Unlock()
 	}
 	return res, err
+}
+
+func (n *Node) hasQuorum() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	total := 1 + len(n.peers)
+	reachable := 1
+	for id := range n.peers {
+		if !n.partitioned[id] {
+			reachable++
+		}
+	}
+	return reachable*2 > total
 }
 
 func (s *Store) GetNow(service string, opts catalog.QueryOptions) *catalog.Result {

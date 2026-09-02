@@ -61,13 +61,17 @@ func NewRunner(store *catalog.Store, clk clock.Clock, concurrency int, opts ...R
 	if concurrency <= 0 {
 		concurrency = 32
 	}
+	seed := clk.Now().UnixNano()
+	if seed == 0 {
+		seed = 1
+	}
 	r := &Runner{
 		clk:           clk,
 		store:         store,
 		checks:        make(map[string]*managedCheck),
 		concurrency:   concurrency,
 		sem:           make(chan struct{}, concurrency),
-		rng:           rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:           rand.New(rand.NewSource(seed)),
 		stop:          make(chan struct{}),
 		criticalSince: make(map[string]time.Time),
 	}
@@ -228,18 +232,36 @@ func (r *Runner) runOne(ctx context.Context, mc *managedCheck) {
 
 	_, _ = r.store.UpdateCheckStatus(ctx, mc.instanceID, mc.check.ID, newStatus, output)
 
-	// DeregisterCriticalAfter tracking
+	// DeregisterCriticalAfter tracking — timer-based, not runOne cadence
 	if newStatus == catalog.HealthCritical {
 		r.mu.Lock()
-		if _, ok := r.criticalSince[mc.instanceID]; !ok {
+		_, existed := r.criticalSince[mc.instanceID]
+		if !existed {
 			r.criticalSince[mc.instanceID] = r.clk.Now()
 		}
 		since := r.criticalSince[mc.instanceID]
 		after := mc.check.DeregisterCriticalAfter
 		r.mu.Unlock()
-		if after > 0 && r.clk.Now().After(since.Add(after)) {
-			if r.OnCriticalLong != nil {
-				r.OnCriticalLong(mc.instanceID)
+		if after > 0 {
+			if r.clk.Now().After(since.Add(after)) {
+				if r.OnCriticalLong != nil {
+					r.OnCriticalLong(mc.instanceID)
+				}
+			} else if !existed {
+				// schedule exact deregistration; fires even if next runOne is up to Interval away
+				go func(id string, start time.Time, d time.Duration) {
+					select {
+					case <-r.clk.After(d):
+						r.mu.Lock()
+						s, ok := r.criticalSince[id]
+						r.mu.Unlock()
+						if ok && s.Equal(start) && r.OnCriticalLong != nil {
+							r.OnCriticalLong(id)
+						}
+					case <-ctx.Done():
+					case <-r.stop:
+					}
+				}(mc.instanceID, since, after)
 			}
 		}
 	} else {

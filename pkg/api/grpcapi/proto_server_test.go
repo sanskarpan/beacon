@@ -14,7 +14,9 @@ import (
 	"github.com/sanskar/beacon/pkg/watch"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/test/bufconn"
+	_ "github.com/sanskar/beacon/pkg/api/grpcapi" // ensure json codec registered
 )
 
 // TestProtoWire_WatchEndToEnd (TODO-018): generated client Watch over real protobuf
@@ -44,6 +46,7 @@ func TestProtoWire_WatchEndToEnd(t *testing.T) {
 
 	conn, err := grpc.NewClient("passthrough:///buf",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.ForceCodec(encoding.GetCodec("json"))),
 		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 			return lis.DialContext(ctx)
 		}),
@@ -209,6 +212,7 @@ func TestProtoServer_RegisterResolveDeregister(t *testing.T) {
 
 	conn, err := grpc.NewClient("passthrough:///buf",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.ForceCodec(encoding.GetCodec("json"))),
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 			return lis.DialContext(ctx)
 		}),

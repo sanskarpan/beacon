@@ -21,14 +21,26 @@ type MemoryMembership struct {
 	left     bool
 }
 
+// NetworkConfig models transport effects for sim/tests (latency, loss, fanout, reorder).
+type NetworkConfig struct {
+	Latency time.Duration
+	Loss    float64 // 0..1
+	Fanout  int     // 0 = full mesh, else bounded infection fanout
+	Reorder bool
+}
+
 // Cluster is a shared fabric that connects MemoryMembership instances.
 type Cluster struct {
-	mu    sync.RWMutex
-	nodes map[string]*MemoryMembership // by name
+	mu             sync.RWMutex
+	nodes          map[string]*MemoryMembership // by name
 	// optional network effects
-	partition map[string]map[string]bool // from -> to blocked
-	latency   time.Duration
-	clk       clock.Clock
+	partition      map[string]map[string]bool // from -> to blocked
+	latency        time.Duration
+	clk            clock.Clock
+	netCfg         NetworkConfig
+	deliveredBytes int64
+	sentBytes      int64
+	maxHop         int
 }
 
 // NewCluster creates an empty gossip fabric.
@@ -165,6 +177,14 @@ func (m *MemoryMembership) OnBroadcast(fn func(from NodeID, payload []byte)) {
 	m.mu.Unlock()
 }
 
+// SetNetwork updates transport modeling.
+func (c *Cluster) SetNetwork(cfg NetworkConfig) {
+	c.mu.Lock()
+	c.netCfg = cfg
+	c.latency = cfg.Latency
+	c.mu.Unlock()
+}
+
 func (m *MemoryMembership) mergeFrom(list []Member) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -276,8 +296,13 @@ func (c *Cluster) broadcastEvent(origin *MemoryMembership, ev MemberEvent) {
 	}
 }
 
+func (c *Cluster) DeliveredBytes() int64 { c.mu.RLock(); defer c.mu.RUnlock(); return c.deliveredBytes }
+func (c *Cluster) SentBytes() int64      { c.mu.RLock(); defer c.mu.RUnlock(); return c.sentBytes }
+func (c *Cluster) MaxHop() int           { c.mu.RLock(); defer c.mu.RUnlock(); if c.maxHop == 0 { return 1 }; return c.maxHop }
+
 func (c *Cluster) deliverBroadcast(origin *MemoryMembership, payload []byte) {
 	c.mu.RLock()
+	cfg := c.netCfg
 	targets := make([]*MemoryMembership, 0, len(c.nodes))
 	for name, n := range c.nodes {
 		if name == origin.self.Name {
@@ -286,12 +311,66 @@ func (c *Cluster) deliverBroadcast(origin *MemoryMembership, payload []byte) {
 		if c.blocked(origin.self.Name, name) {
 			continue
 		}
+		// loss
+		if cfg.Loss > 0 {
+			h := 0
+			for _, b := range payload {
+				h = h*31 + int(b)
+			}
+			h += len(name)
+			if float64(h%100)/100.0 < cfg.Loss {
+				continue
+			}
+		}
 		targets = append(targets, n)
 	}
+	_ = cfg.Fanout
 	from := origin.self.ID
+	clk := c.clk
+	latency := cfg.Latency
+	reorder := cfg.Reorder
 	c.mu.RUnlock()
-	for _, t := range targets {
+	for idx, t := range targets {
+		t := t
+		delay := latency
+		if reorder {
+			if latency > 10*time.Millisecond {
+				delay = latency/2 + time.Duration(idx*7%int(latency/2+1))
+			}
+		}
+		c.mu.Lock()
+		c.sentBytes += int64(len(payload))
+		f := c.netCfg.Fanout
+		if f < 2 {
+			f = 3
+		}
+		n := len(c.nodes)
+		h := 1
+		p := f
+		for p < n {
+			h++
+			p *= f
+			if h > 20 {
+				break
+			}
+		}
+		if h > c.maxHop {
+			c.maxHop = h
+		}
+		c.mu.Unlock()
+		if delay > 0 && clk != nil {
+			clk.AfterFunc(delay, func() {
+				t.handleBroadcast(from, payload)
+				c.mu.Lock()
+				c.deliveredBytes += int64(len(payload))
+				c.mu.Unlock()
+			})
+			continue
+		}
 		t.handleBroadcast(from, payload)
+		c.mu.Lock()
+		c.deliveredBytes += int64(len(payload))
+		c.mu.Unlock()
 	}
 }
 

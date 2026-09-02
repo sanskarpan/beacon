@@ -62,6 +62,7 @@ type Client struct {
 	// renew cancel funcs
 	renewers map[string]context.CancelFunc
 	rng      *rand.Rand
+	rngMu    sync.Mutex
 }
 
 // Config for the client.
@@ -263,10 +264,30 @@ func (c *Client) OutcomeReporter() grpc.UnaryClientInterceptor {
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		start := c.clk.Now()
 		err := invoker(ctx, method, req, reply, cc, opts...)
-		c.outlier.Record(cc.Target(), err, c.clk.Now().Sub(start))
+		target := method
+		if cc != nil {
+			target = cc.Target()
+		}
+		c.outlier.Record(target, err, c.clk.Now().Sub(start))
 		return err
 	}
 }
+
+// StreamOutcomeReporter is the stream counterpart for passive health.
+func (c *Client) StreamOutcomeReporter() grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		start := c.clk.Now()
+		cs, err := streamer(ctx, desc, cc, method, opts...)
+		target := method
+		if cc != nil {
+			target = cc.Target()
+		}
+		c.outlier.Record(target, err, c.clk.Now().Sub(start))
+		return cs, err
+	}
+}
+
+var backoffMu sync.Mutex
 
 // BackoffWithJitter returns full-jitter reconnect delay.
 func BackoffWithJitter(attempt int, rng *rand.Rand) time.Duration {
@@ -280,7 +301,10 @@ func BackoffWithJitter(attempt int, rng *rand.Rand) time.Duration {
 	if base <= 0 {
 		return 0
 	}
-	return time.Duration(rng.Int63n(int64(base)))
+	backoffMu.Lock()
+	v := rng.Int63n(int64(base))
+	backoffMu.Unlock()
+	return time.Duration(v)
 }
 
 func (c *Client) persistCache(service string, insts []catalog.Instance) {

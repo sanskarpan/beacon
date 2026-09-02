@@ -20,6 +20,8 @@ var (
 	ErrNotFound = errors.New("catalog: not found")
 	// ErrInvalid is a bad registration.
 	ErrInvalid = errors.New("catalog: invalid")
+	// ErrRateLimited is returned when per-node registration rate is exceeded.
+	ErrRateLimited = errors.New("catalog: rate limited")
 )
 
 // Store is an in-memory catalog with monotonic indexing and secondary indexes.
@@ -47,6 +49,7 @@ type Store struct {
 	batcher *IndexBatcher
 	// if batching is enabled, mutations stage service names and flush later
 	batchEnabled bool
+	limiter *rateLimiter
 }
 
 type indexWaiter struct {
@@ -72,6 +75,77 @@ func WithBatchWindow(d time.Duration) StoreOption {
 	return func(s *Store) {
 		s.batchEnabled = true
 		s.batcher = NewIndexBatcher(s.clk, d, s.flushBatch)
+	}
+}
+
+// rateLimiter is a simple token bucket per node.
+type rateLimiter struct {
+	mu        sync.Mutex
+	limit     int           // tokens per second
+	burst     int
+	tokens    map[string]float64
+	lastCheck map[string]time.Time
+}
+
+func newRateLimiter(limit, burst int) *rateLimiter {
+	return &rateLimiter{
+		limit:     limit,
+		burst:     burst,
+		tokens:    make(map[string]float64),
+		lastCheck: make(map[string]time.Time),
+	}
+}
+
+func (rl *rateLimiter) allow(node string, now time.Time) bool {
+	if rl == nil || rl.limit <= 0 {
+		return true
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	// opportunistic GC: prune entries idle >10m when map grows (bounded memory)
+	if len(rl.lastCheck) > 512 {
+		for n, t := range rl.lastCheck {
+			if now.Sub(t) > 10*time.Minute {
+				delete(rl.tokens, n)
+				delete(rl.lastCheck, n)
+			}
+		}
+	}
+	last, ok := rl.lastCheck[node]
+	if !ok {
+		rl.tokens[node] = float64(rl.burst)
+		rl.lastCheck[node] = now
+		last = now
+	}
+	elapsed := now.Sub(last).Seconds()
+	if elapsed > 0 {
+		rl.tokens[node] += elapsed * float64(rl.limit)
+		if rl.tokens[node] > float64(rl.burst) {
+			rl.tokens[node] = float64(rl.burst)
+		}
+		rl.lastCheck[node] = now
+	}
+	if rl.tokens[node] >= 1 {
+		rl.tokens[node]--
+		return true
+	}
+	return false
+}
+
+func (rl *rateLimiter) prune(node string) {
+	if rl == nil {
+		return
+	}
+	rl.mu.Lock()
+	delete(rl.tokens, node)
+	delete(rl.lastCheck, node)
+	rl.mu.Unlock()
+}
+
+// WithNodeRegRateLimit enables per-node registration rate limiting.
+func WithNodeRegRateLimit(limit, burst int) StoreOption {
+	return func(s *Store) {
+		s.limiter = newRateLimiter(limit, burst)
 	}
 }
 
@@ -108,37 +182,41 @@ func (s *Store) Register(ctx context.Context, inst *Instance) (uint64, error) {
 	if inst == nil || inst.ID == "" || inst.Service == "" {
 		return 0, fmt.Errorf("%w: id and service required", ErrInvalid)
 	}
-	if inst.Weight <= 0 {
-		inst.Weight = 1
+	// Clone first to avoid mutating caller's object (race with Agent local state)
+	cp := inst.Clone()
+	if cp.Weight <= 0 {
+		cp.Weight = 1
 	}
-	if inst.Health == "" {
-		inst.Health = HealthPassing
+	if cp.Health == "" {
+		cp.Health = HealthPassing
 	}
-	for i := range inst.Checks {
-		inst.Checks[i].Defaults()
+	for i := range cp.Checks {
+		cp.Checks[i].Defaults()
 	}
 	// recompute aggregate from checks if present
-	if len(inst.Checks) > 0 {
-		statuses := make([]HealthStatus, len(inst.Checks))
-		for i, c := range inst.Checks {
+	if len(cp.Checks) > 0 {
+		statuses := make([]HealthStatus, len(cp.Checks))
+		for i, c := range cp.Checks {
 			statuses[i] = c.Status
 		}
-		inst.Health = Aggregate(statuses)
+		cp.Health = Aggregate(statuses)
 	}
 	traceID := events.TraceFrom(ctx)
 	if traceID == "" {
-		traceID = inst.TraceID
+		traceID = cp.TraceID
 	}
 	if traceID == "" {
 		traceID = trace.NewID()
 	}
-	inst.TraceID = traceID
+	cp.TraceID = traceID
 
+	if s.limiter != nil && !s.limiter.allow(cp.Node, s.clk.Now()) {
+		return 0, fmt.Errorf("%w: node %q rate limited", ErrRateLimited, cp.Node)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	existing, exists := s.instances[inst.ID]
-	cp := inst.Clone()
+	existing, exists := s.instances[cp.ID]
 	if exists {
 		cp.CreateIndex = existing.CreateIndex
 		// preserve incarnation max
@@ -196,8 +274,13 @@ func (s *Store) Deregister(ctx context.Context, id string) (uint64, error) {
 	}
 
 	svcName := inst.Service
+	node := inst.Node
 	s.unindexLocked(inst)
 	delete(s.instances, id)
+	// prune rate limiter when node has no more instances (M5 GC): best-effort, no deadlock (limiter has its own mu)
+	if s.limiter != nil && len(s.byNode[node]) == 0 {
+		s.limiter.prune(node)
+	}
 
 	idx := s.bumpLocked(svcName)
 	if svc, ok := s.services[svcName]; ok {
@@ -272,8 +355,12 @@ func (s *Store) UpdateCheckStatus(ctx context.Context, instanceID string, checkI
 		return s.index, ErrNotFound
 	}
 	found := false
+	var oldOutput string
+	var oldHealth HealthStatus
 	for i := range inst.Checks {
 		if inst.Checks[i].ID == checkID {
+			oldOutput = inst.Checks[i].Output
+			oldHealth = inst.Health
 			inst.Checks[i].Status = status
 			inst.Checks[i].Output = output
 			found = true
@@ -288,7 +375,7 @@ func (s *Store) UpdateCheckStatus(ctx context.Context, instanceID string, checkI
 		statuses[i] = c.Status
 	}
 	agg := Aggregate(statuses)
-	if inst.Health == agg {
+	if oldHealth == agg && oldOutput == output {
 		return s.index, nil
 	}
 	prev := inst.Health
@@ -327,7 +414,8 @@ func (s *Store) Get(ctx context.Context, service string, opts QueryOptions) (*Re
 			return res, nil
 		}
 		// Guard: future index (restart/restore) → treat as 0, return now.
-		if opts.MinIndex > s.index {
+		// Use per-service index, not global, per SPEC §9
+		if opts.MinIndex > idx {
 			res := s.snapshotServiceLocked(service, opts)
 			s.mu.RUnlock()
 			return res, nil
@@ -339,7 +427,7 @@ func (s *Store) Get(ctx context.Context, service string, opts QueryOptions) (*Re
 		s.mu.Lock()
 		// re-check under write lock
 		idx = s.serviceIndexLocked(service)
-		if idx > opts.MinIndex || opts.MinIndex > s.index {
+		if idx > opts.MinIndex {
 			res := s.snapshotServiceLocked(service, opts)
 			s.mu.Unlock()
 			return res, nil
@@ -445,7 +533,9 @@ func (s *Store) Restore(snap *Snapshot) error {
 	s.byNode = make(map[string]map[string]struct{})
 	s.byTag = make(map[string]map[string]struct{})
 	s.byHealth = make(map[HealthStatus]map[string]struct{})
-	s.index = snap.Index
+	if snap.Index > s.index {
+		s.index = snap.Index
+	}
 	for k, v := range snap.Services {
 		cp := *v
 		s.services[k] = &cp
@@ -509,10 +599,10 @@ func (s *Store) ReplaceAll(instances []*Instance) (uint64, error) {
 
 func (s *Store) bumpLocked(service string) uint64 {
 	if s.batchEnabled && s.batcher != nil {
-		// Stage the service; still allocate a provisional index for CreateIndex.
-		s.index++
-		s.batcher.Touch(service)
-		return s.index
+		// Coalesce: all mutations in the window share one index
+		idx := s.index + 1
+		s.batcher.TouchWithIndex(service, idx)
+		return idx
 	}
 	s.index++
 	s.wakeServiceLocked(service, s.index)

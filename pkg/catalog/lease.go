@@ -136,13 +136,10 @@ func (m *LeaseManager) RenewLease(ctx context.Context, leaseID string) (*Lease, 
 		return nil, ErrNotFound
 	}
 	now := m.clk.Now()
-	// Grace: accept slightly after expiry.
-	if now.After(e.lease.ExpiresAt.Add(m.grace)) && e.critical {
-		// past grace and already critical — still allow restore within deregister window
-		if !now.Before(e.removeAt) {
-			m.mu.Unlock()
-			return nil, fmt.Errorf("lease expired past grace: %w", ErrNotFound)
-		}
+	// Grace: accept only within short grace window after expiry, not until DeregisterAfter
+	if now.After(e.lease.ExpiresAt.Add(m.grace)) {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("lease expired past grace: %w", ErrNotFound)
 	}
 	e.lease.ExpiresAt = now.Add(e.lease.TTL)
 	e.critical = false

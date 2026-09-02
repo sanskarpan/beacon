@@ -6,6 +6,7 @@ package dns
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -98,7 +99,10 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	// Truncation: if UDP and too large, set TC so client retries TCP.
 	if _, isUDP := w.RemoteAddr().(*net.UDPAddr); isUDP {
 		if m.Len() > 512 {
+			// Truncate to fit 512: keep as many answers as fit, clear extra
+			// For simplicity, drop all and set TC (client will retry TCP which has no limit)
 			m.Answer = nil
+			m.Extra = nil
 			m.Truncated = true
 		}
 	}
@@ -116,7 +120,7 @@ func (s *Server) answer(m *dns.Msg, q dns.Question, name string) {
 	parts := strings.Split(name, ".")
 	// need at least service.service.beacon
 	if len(parts) < 3 {
-		m.Rcode = dns.RcodeNameError
+		m.Rcode = dns.RcodeSuccess
 		return
 	}
 	domain := s.domain
@@ -137,7 +141,7 @@ func (s *Server) answer(m *dns.Msg, q dns.Question, name string) {
 		}
 	}
 	if idx < 0 {
-		m.Rcode = dns.RcodeNameError
+		m.Rcode = dns.RcodeSuccess
 		return
 	}
 
@@ -156,17 +160,12 @@ func (s *Server) answer(m *dns.Msg, q dns.Question, name string) {
 			return
 		}
 		service = parts[idx-1]
-		if idx >= 2 {
-			// could be tag.service.service.domain
-			tag = parts[idx-2]
-			// if tag looks like datacenter placement: service.service.dc.domain → tag empty
-			// Heuristic: if len parts is service.service.dc.domain (4 + optional), tag is only when 5+
-			// <tag>.<service>.service.<domain> = 4 parts minimum with tag
-			// Actually: payments.service.beacon = 3 parts (service at idx1)
-			// v2.payments.service.beacon = 4 parts (service at idx2, tag=v2)
-			if idx == 1 {
-				tag = ""
-			}
+		// strict tag heuristic: only <tag>.<service>.service.<domain> (4 parts, service at idx 2) carries a tag.
+		// payments.service.dc.beacon (also 4 parts but service at idx1) is datacenter, not tag.
+		if len(parts) == 4 && idx == 2 {
+			tag = parts[0]
+		} else {
+			tag = ""
 		}
 		opts := catalog.QueryOptions{Passing: s.passingOnly}
 		if tag != "" && idx >= 2 {
@@ -183,7 +182,7 @@ func (s *Server) answer(m *dns.Msg, q dns.Question, name string) {
 		}
 		ip := net.ParseIP(inst.Address)
 		switch q.Qtype {
-		case dns.TypeA, dns.TypeANY:
+		case dns.TypeA:
 			if ip != nil && ip.To4() != nil {
 				m.Answer = append(m.Answer, &dns.A{
 					Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: ttl},
@@ -196,6 +195,20 @@ func (s *Server) answer(m *dns.Msg, q dns.Question, name string) {
 					Hdr:  dns.RR_Header{Name: q.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: ttl},
 					AAAA: ip,
 				})
+			}
+		case dns.TypeANY:
+			if ip != nil {
+				if ip.To4() != nil {
+					m.Answer = append(m.Answer, &dns.A{
+						Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: ttl},
+						A:   ip.To4(),
+					})
+				} else {
+					m.Answer = append(m.Answer, &dns.AAAA{
+						Hdr:  dns.RR_Header{Name: q.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: ttl},
+						AAAA: ip,
+					})
+				}
 			}
 		case dns.TypeSRV:
 			// priority 1, weight from instance
@@ -222,13 +235,12 @@ func (s *Server) answer(m *dns.Msg, q dns.Question, name string) {
 	}
 }
 
+var shuffleMu sync.Mutex
+
 func shuffle(rrs []dns.RR) {
-	// Fisher-Yates with time-based seed via address of slice
-	n := len(rrs)
-	for i := n - 1; i > 0; i-- {
-		j := int(rrs[i].Header().Ttl+uint32(i*7+3)) % (i + 1) // weak but dependency-free
-		// better: use simple index swap with hash
-		j = (i*31 + 17) % (i + 1)
+	shuffleMu.Lock()
+	defer shuffleMu.Unlock()
+	rand.Shuffle(len(rrs), func(i, j int) {
 		rrs[i], rrs[j] = rrs[j], rrs[i]
-	}
+	})
 }

@@ -200,6 +200,12 @@ func (s *DiscoveryServer) WatchMultiStream(
 	ctx context.Context,
 ) error {
 	var mu sync.Mutex
+	var sendMu sync.Mutex
+	safeSend := func(ev *WatchEvent) error {
+		sendMu.Lock()
+		defer sendMu.Unlock()
+		return send(ev)
+	}
 	cancels := map[string]context.CancelFunc{}
 	defer func() {
 		mu.Lock()
@@ -235,7 +241,7 @@ func (s *DiscoveryServer) WatchMultiStream(
 			cancels[req.Service] = cancel
 			mu.Unlock()
 			go func(service string, from uint64) {
-				_ = s.WatchStream(&WatchRequest{Service: service, FromIndex: from}, send, cctx)
+				_ = s.WatchStream(&WatchRequest{Service: service, FromIndex: from}, safeSend, cctx)
 			}(req.Service, req.FromIndex)
 		}
 	}

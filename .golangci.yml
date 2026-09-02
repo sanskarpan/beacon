@@ -1,25 +1,22 @@
 # golangci-lint configuration for beacon.
 # Run: golangci-lint run ./...
-timeout: 5m
+version: "2"
+run:
+  timeout: 5m
 linters:
   enable:
     - errcheck
     - govet
-    - ineffassign
     - staticcheck
-    - unused
-    - gosimple
     - gocritic
     - misspell
-  disable:
-    - depguard  # no external dep policy needed yet
-linters-settings:
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - performance
-    disabled-checks:
-      - hugeParam  # catalog.Instance is large but cloned at boundaries
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        - hugeParam  # catalog.Instance is large but cloned at boundaries
 issues:
   exclude-rules:
     # Virtual clock and sim helpers legitimately use time.Sleep for goroutine scheduling.

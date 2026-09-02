@@ -3,6 +3,7 @@ package sdk
 import (
 	"sync"
 
+	"github.com/sanskar/beacon/pkg/catalog"
 	"github.com/sanskar/beacon/pkg/lb"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
@@ -36,7 +37,22 @@ func (b *pickerBuilder) Build(info base.PickerBuildInfo) balancer.Picker {
 	scByAddr := map[string]balancer.SubConn{}
 	for sc, scInfo := range info.ReadySCs {
 		addr := scInfo.Address.Addr
-		eps = append(eps, &lb.Endpoint{Addr: addr, Weight: 1, Healthy: true})
+		weight := 1
+		if v := scInfo.Address.Attributes.Value("beacon-weight"); v != nil {
+			if w, ok := v.(int); ok && w > 0 {
+				weight = w
+			} else if w32, ok := v.(int32); ok && w32 > 0 {
+				weight = int(w32)
+			}
+		}
+		zone, region := "", ""
+		if v := scInfo.Address.Attributes.Value("beacon-locality"); v != nil {
+			if loc, ok := v.(catalog.Locality); ok {
+				zone = loc.Zone
+				region = loc.Region
+			}
+		}
+		eps = append(eps, &lb.Endpoint{Addr: addr, Weight: weight, Healthy: true, Zone: zone, Region: region})
 		scByAddr[addr] = sc
 	}
 	inner := lb.NewPicker(b.policy, eps)
