@@ -158,7 +158,12 @@ func (s *Server) xdsStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	node := r.URL.Query().Get("node")
-	writeJSON(w, s.xds.Status(node))
+	st := s.xds.Status(node)
+	// Ensure configured flag for console / tests
+	if _, ok := st["configured"]; !ok {
+		st["configured"] = true
+	}
+	writeJSON(w, st)
 }
 
 // --- Telemetry call graph (TODO-047) ---
