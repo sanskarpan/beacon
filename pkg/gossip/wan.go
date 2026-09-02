@@ -8,9 +8,10 @@ import (
 // Each DC has a LAN membership; WAN links DC gateways and floods catalog
 // digests across DCs at a lower rate than LAN.
 type WANPool struct {
-	mu   sync.RWMutex
-	dcs  map[string]*DCLink // dc name → link
-	self string
+	mu               sync.RWMutex
+	dcs              map[string]*DCLink // dc name → link
+	self             string
+	wildcardHandlers []func(fromDC string, index uint64, payload []byte)
 }
 
 // DCLink is one datacenter's WAN presence.
@@ -39,6 +40,8 @@ func (w *WANPool) JoinDC(dc string, gateways []Member) {
 	if link == nil {
 		link = &DCLink{Name: dc}
 		w.dcs[dc] = link
+		// apply wildcard handlers to new DC
+		link.Handlers = append(append([]func(string, uint64, []byte){}, w.wildcardHandlers...), link.Handlers...)
 	}
 	link.Gateways = append([]Member(nil), gateways...)
 }
@@ -71,14 +74,13 @@ func (w *WANPool) OnFlood(dc string, fn func(fromDC string, index uint64, payloa
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if dc == "*" {
+		w.wildcardHandlers = append(w.wildcardHandlers, fn)
 		for _, link := range w.dcs {
 			link.Handlers = append(link.Handlers, fn)
 		}
-		// also store on self for future joins
-		if w.dcs[w.self] == nil {
-			w.dcs[w.self] = &DCLink{Name: w.self}
+			if w.dcs[w.self] == nil {
+			w.dcs[w.self] = &DCLink{Name: w.self, Handlers: append([]func(string, uint64, []byte){}, w.wildcardHandlers...)}
 		}
-		w.dcs[w.self].Handlers = append(w.dcs[w.self].Handlers, fn)
 		return
 	}
 	link := w.dcs[dc]
@@ -103,14 +105,14 @@ func (w *WANPool) Datacenters() []string {
 // Deliver simulates receiving a flood from a remote DC (test/sim helper).
 func (w *WANPool) Deliver(fromDC string, index uint64, payload []byte) {
 	w.mu.RLock()
-	// notify handlers registered on self and on fromDC
 	var handlers []func(string, uint64, []byte)
-	if link := w.dcs[w.self]; link != nil {
-		handlers = append(handlers, link.Handlers...)
-	}
 	if link := w.dcs[fromDC]; link != nil {
 		handlers = append(handlers, link.Handlers...)
 		link.CatalogIndex = index
+	}
+	// also fire wildcard handlers stored on self if no specific handler
+	if len(handlers) == 0 && w.dcs[w.self] != nil {
+		handlers = append(handlers, w.dcs[w.self].Handlers...)
 	}
 	w.mu.RUnlock()
 	for _, h := range handlers {
