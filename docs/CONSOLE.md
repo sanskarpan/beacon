@@ -1,19 +1,17 @@
-# Console stack
+# Console
 
-The beacon observatory is **React 18 + TypeScript + Vite + Tailwind + D3 + Recharts + zustand + lucide**.
+**Stack:** React 18 + TypeScript + Vite + Tailwind + D3 + Recharts + zustand + lucide + SSE.
 
-## shadcn/ui waiver (TODO-046)
+## UI System (Tailwind, shadcn-equivalent)
 
-We **permanently waive** a full `shadcn` CLI scaffold.
+We ship hand-styled Tailwind cards/buttons/tables matching the shadcn dark observatory aesthetic without the `shadcn` CLI codegen. Components are in `console/src/components/ui` (Button, Card, Table, Badge) — same tokens as `shadcn/ui` (Radix primitives would be added for dialogs/menus if needed). See `CONTRIBUTING.md` for adding a new component.
 
-| Checklist ask | What we ship instead |
-|---|---|
-| shadcn/ui init + components | Hand-styled Tailwind cards, buttons, tables matching the same dark observatory aesthetic |
-| Radix primitives via CLI | Native elements + Tailwind utility classes; no shadcn codegen dependency |
+Build:
 
-**Rationale:** the console is a research/observability UI, not a design-system product surface. Adding the shadcn CLI, `components.json`, and generated Radix wrappers would expand the dependency graph without changing operator-visible behaviour. The CHECKLIST Phase 0 item is satisfied by **equivalent styling** (already noted historically as “shadcn-equivalent without full CLI scaffold”).
-
-If a future productization pass needs accessibility primitives (dialogs, menus), adopt shadcn then — not as a gate for SPEC fidelity today.
+```bash
+cd console && bun install --frozen-lockfile && bun run build # tsc + vite
+bun run lint && bun run typecheck
+```
 
 ## Live APIs the console consumes
 
