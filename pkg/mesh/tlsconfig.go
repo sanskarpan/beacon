@@ -18,12 +18,12 @@ func ServerTLSConfig(ca *CA, serverID Identity, serverWorkload string, allowedCl
 	if err != nil {
 		return nil, err
 	}
-	kc, err := tls.X509KeyPair(cert.ChainPEM, cert.KeyPEM)
+	kc, err := tls.X509KeyPair(cert.CertPEM, cert.KeyPEM)
 	if err != nil {
 		return nil, err
 	}
 	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(ca.Root().Bundle())
+	pool.AppendCertsFromPEM(ca.Bundle())
 
 	allowed := map[string]bool{}
 	for _, a := range allowedClients {
@@ -63,19 +63,42 @@ func ClientTLSConfig(ca *CA, clientID Identity, clientWorkload string) (*tls.Con
 	if err != nil {
 		return nil, err
 	}
-	kc, err := tls.X509KeyPair(cert.ChainPEM, cert.KeyPEM)
+	kc, err := tls.X509KeyPair(cert.CertPEM, cert.KeyPEM)
 	if err != nil {
 		return nil, err
 	}
 	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(ca.Root().Bundle())
+	pool.AppendCertsFromPEM(ca.Bundle())
+
+	verifyPeer := func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
+			return fmt.Errorf("mesh: no server cert presented")
+		}
+		leaf, err := x509.ParseCertificate(rawCerts[0])
+		if err != nil {
+			return err
+		}
+		// Verify chain against our CA bundle
+		opts := x509.VerifyOptions{
+			Roots:     pool,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageAny},
+		}
+		if _, err := leaf.Verify(opts); err != nil {
+			return fmt.Errorf("mesh: server cert not trusted: %w", err)
+		}
+		if PeerIdentity(leaf) == "" {
+			return fmt.Errorf("mesh: server cert has no SPIFFE identity")
+		}
+		return nil
+	}
+
 	return &tls.Config{
 		Certificates: []tls.Certificate{kc},
 		RootCAs:      pool,
 		MinVersion:   tls.VersionTLS12,
-		// SPIFFE URI SANs are not DNS names; skip hostname verify and validate
-		// the peer identity out-of-band (e.g. gRPC auth interceptor / HTTP).
-		InsecureSkipVerify: true,
+		// SPIFFE URI SANs are not DNS names; use custom verification
+		InsecureSkipVerify:    true,
+		VerifyPeerCertificate: verifyPeer,
 	}, nil
 }
 
