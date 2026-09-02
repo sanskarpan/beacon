@@ -83,6 +83,7 @@ type DiscoveryResponse struct {
 
 // StreamState tracks one ADS stream.
 type StreamState struct {
+	mu           sync.Mutex
 	NodeID       string
 	Subscribed   map[string]map[string]struct{} // typeURL → names (empty = wildcard)
 	LastVersion  map[string]string
@@ -90,6 +91,11 @@ type StreamState struct {
 	Acked        map[string]string
 	Nacked       map[string]string
 	NonceCounter uint64
+}
+
+// SecretSource provides SDS secrets over ADS.
+type SecretSource interface {
+	GetSecret(nodeID, spiffeURI string) (*Resource, error)
 }
 
 // Server is the xDS control plane.
@@ -102,6 +108,7 @@ type Server struct {
 	// last pushed config hash per type to detect unchanged NACK resend attempts
 	lastPushHash map[string]string
 	debounce     time.Duration
+	secretSource SecretSource
 }
 
 // New creates an xDS server.
@@ -114,6 +121,14 @@ func New(st store.CatalogStore, bus *events.Bus) *Server {
 		lastPushHash: make(map[string]string),
 		debounce:     50 * time.Millisecond,
 	}
+}
+
+// WithSDS attaches a secret source multiplexed on this ADS stream (TODO-029).
+func (s *Server) WithSDS(src SecretSource) *Server {
+	s.mu.Lock()
+	s.secretSource = src
+	s.mu.Unlock()
+	return s
 }
 
 // BuildSnapshot constructs CDS/EDS/LDS/RDS from the catalog.
@@ -181,6 +196,7 @@ func (s *Server) BuildSnapshot(nodeID string) *Snapshot {
 // HandleRequest processes an ADS request and returns ordered responses.
 // Returns nil if nothing to send (NACK wait, already acked same version).
 func (s *Server) HandleRequest(req *DiscoveryRequest) []*DiscoveryResponse {
+
 	s.mu.Lock()
 	st, ok := s.streams[req.NodeID]
 	if !ok {
@@ -195,6 +211,8 @@ func (s *Server) HandleRequest(req *DiscoveryRequest) []*DiscoveryResponse {
 		s.streams[req.NodeID] = st
 	}
 	s.mu.Unlock()
+	st.mu.Lock()
+	defer st.mu.Unlock()
 
 	// NACK detection: presence of error_detail — do NOT resend.
 	if req.ErrorDetail != nil {
@@ -213,6 +231,7 @@ func (s *Server) HandleRequest(req *DiscoveryRequest) []*DiscoveryResponse {
 	// ACK
 	if req.ResponseNonce != "" && req.ResponseNonce == st.LastNonce[req.TypeURL] {
 		st.Acked[req.TypeURL] = req.VersionInfo
+		delete(st.Nacked, req.TypeURL)
 		if s.bus != nil {
 			s.bus.Publish(events.Event{
 				Kind:   events.EvXDSAck,
@@ -220,6 +239,8 @@ func (s *Server) HandleRequest(req *DiscoveryRequest) []*DiscoveryResponse {
 				Detail: req.TypeURL + " " + req.VersionInfo,
 			})
 		}
+	} else if req.ResponseNonce != "" {
+		// Stale nonce: not an ACK, just a subscription change
 	}
 
 	// Update subscriptions
@@ -250,6 +271,79 @@ func (s *Server) HandleRequest(req *DiscoveryRequest) []*DiscoveryResponse {
 
 	var out []*DiscoveryResponse
 	for _, t := range types {
+		// SDS handling
+		if t == TypeSecret && s.secretSource != nil {
+			// Collect requested secrets
+			names := map[string]struct{}{}
+			for n := range st.Subscribed[t] {
+				names[n] = struct{}{}
+			}
+			for _, n := range req.ResourceNames {
+				if t == req.TypeURL {
+					names[n] = struct{}{}
+				}
+			}
+			if len(names) == 0 && len(req.ResourceNames) == 0 {
+				// wildcard or no subscription yet: try to serve any subscribed
+				// If still empty, skip push until explicit subscription
+				continue
+			}
+			var secRes []Resource
+			for n := range names {
+				r, err := s.secretSource.GetSecret(req.NodeID, n)
+				if err == nil && r != nil {
+					secRes = append(secRes, *r)
+				}
+			}
+			if len(secRes) == 0 {
+				continue
+			}
+			// version from hash of secret bodies
+			h := sha256.New()
+			for _, r := range secRes {
+				h.Write([]byte(r.Name))
+				h.Write(r.Body)
+			}
+			ver := hex.EncodeToString(h.Sum(nil))[:12]
+			hash := ver + ":" + t
+			if st.LastVersion[t] == ver && st.Nacked[t] == "" {
+				continue
+			}
+			if st.Acked[t] == ver && st.Nacked[t] == "" {
+				continue
+			}
+			if st.Nacked[t] != "" && s.lastPushHash[req.NodeID+t] == hash {
+				continue
+			}
+			st.NonceCounter++
+			nonce := fmt.Sprintf("%s-%d", req.NodeID, st.NonceCounter)
+			st.LastNonce[t] = nonce
+			st.LastVersion[t] = ver
+			s.lastPushHash[req.NodeID+t] = hash
+			bytes := 0
+			for _, r := range secRes {
+				bytes += len(r.Body) + len(r.Name)
+			}
+			dr := &DiscoveryResponse{
+				VersionInfo: ver,
+				Nonce:       nonce,
+				TypeURL:     t,
+				Resources:   secRes,
+				Bytes:       bytes,
+			}
+			out = append(out, dr)
+			if s.bus != nil {
+				s.bus.Publish(events.Event{
+					Kind:   events.EvXDSPush,
+					Node:   req.NodeID,
+					Detail: fmt.Sprintf("%s v=%s resources=%d bytes=%d", t, ver, len(secRes), bytes),
+				})
+			}
+			continue
+		}
+		if st.LastVersion[t] == snap.Version && st.Nacked[t] == "" {
+			continue // already pushed this version (even if not yet ACKed)
+		}
 		if st.Acked[t] == snap.Version && st.Nacked[t] == "" {
 			continue // already has this version
 		}
@@ -335,6 +429,23 @@ func (s *Server) DeltaResponse(nodeID, typeURL string, prev, curr *Snapshot) *Di
 		RemovedResources: removed,
 		Bytes:            bytes,
 	}
+}
+
+// Status returns xDS status for console.
+func (s *Server) Status(node string) map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if node != "" {
+		if snap, ok := s.snapshots[node]; ok {
+			return map[string]any{"node": node, "version": snap.Version, "resources": snap.Resources}
+		}
+		return map[string]any{"node": node, "found": false}
+	}
+	nodes := make([]string, 0, len(s.snapshots))
+	for k := range s.snapshots {
+		nodes = append(nodes, k)
+	}
+	return map[string]any{"nodes": nodes, "count": len(nodes)}
 }
 
 // SotWBytes returns total bytes for a full SotW push of typeURL.
