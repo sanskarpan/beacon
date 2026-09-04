@@ -6,7 +6,7 @@ require (
 	github.com/example/grpc-service v0.0.0-00010101000000-000000000000
 	github.com/miekg/dns v1.1.72
 	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/client_model v0.6.2
+	github.com/prometheus/client_model v0.6.3
 	github.com/sanskarpan/raft-consensus v0.0.0-20260729053845-7ed51625a09e
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.46.0
