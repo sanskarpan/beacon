@@ -11,8 +11,10 @@ import (
 // (Kubernetes returns HTTP 410 Gone for the same reason).
 type Cache struct {
 	mu     sync.RWMutex
-	events []Event
+	buf    []Event
 	cap    int
+	head   int // index of oldest
+	size   int
 	oldest uint64
 	newest uint64
 }
@@ -23,34 +25,31 @@ func NewCache(capacity int) *Cache {
 		capacity = 1000
 	}
 	return &Cache{
-		events: make([]Event, 0, capacity),
-		cap:    capacity,
+		buf: make([]Event, capacity),
+		cap: capacity,
 	}
 }
 
-// Append adds an event.
+// Append adds an event — O(1) ring, no shift.
 func (c *Cache) Append(ev Event) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.events) >= c.cap {
-		// drop oldest
-		c.events = c.events[1:]
-		if len(c.events) > 0 {
-			c.oldest = c.events[0].Index
-		}
+	if c.size < c.cap {
+		pos := (c.head + c.size) % c.cap
+		c.buf[pos] = ev
+		c.size++
+	} else {
+		// overwrite oldest
+		c.buf[c.head] = ev
+		c.head = (c.head + 1) % c.cap
 	}
-	c.events = append(c.events, ev)
-	if c.oldest == 0 || ev.Index < c.oldest {
-		if len(c.events) == 1 {
-			c.oldest = ev.Index
-		}
+	if c.size == 1 {
+		c.oldest = ev.Index
+	} else {
+		c.oldest = c.buf[c.head].Index
 	}
 	if ev.Index > c.newest {
 		c.newest = ev.Index
-	}
-	// recompute oldest
-	if len(c.events) > 0 {
-		c.oldest = c.events[0].Index
 	}
 }
 
@@ -58,14 +57,15 @@ func (c *Cache) Append(ev Event) {
 func (c *Cache) Since(index uint64) ([]Event, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if len(c.events) == 0 {
+	if c.size == 0 {
 		return nil, nil
 	}
 	if index < c.oldest && index > 0 {
 		return nil, ErrIndexCompacted
 	}
-	out := make([]Event, 0)
-	for _, ev := range c.events {
+	out := make([]Event, 0, c.size)
+	for i := 0; i < c.size; i++ {
+		ev := c.buf[(c.head+i)%c.cap]
 		if ev.Index > index {
 			out = append(out, ev)
 		}
@@ -84,7 +84,7 @@ func (c *Cache) Oldest() uint64 {
 func (c *Cache) Len() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return len(c.events)
+	return c.size
 }
 
 // Newest returns newest index.
@@ -94,11 +94,13 @@ func (c *Cache) Newest() uint64 {
 	return c.newest
 }
 
-// Events returns a snapshot of events.
+// Events returns a snapshot of events in order.
 func (c *Cache) Events() []Event {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	cp := make([]Event, len(c.events))
-	copy(cp, c.events)
+	cp := make([]Event, c.size)
+	for i := 0; i < c.size; i++ {
+		cp[i] = c.buf[(c.head+i)%c.cap]
+	}
 	return cp
 }
