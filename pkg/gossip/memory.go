@@ -311,32 +311,15 @@ func (c *Cluster) deliverBroadcast(origin *MemoryMembership, payload []byte) {
 		if c.blocked(origin.self.Name, name) {
 			continue
 		}
-		// loss — randomized per delivery (was deterministic hash payload+name)
+		// loss — deterministic per-payload+target drop (keeps virtual-clock determinism; re-gossip in store layer provides retry)
 		if cfg.Loss > 0 {
-			// use clock time to vary across retries while staying deterministic in virtual clock tests
-			var seed int64
-			if c.clk != nil {
-				seed = c.clk.Now().UnixNano()
-			} else {
-				seed = int64(len(payload) + len(name))
+			h := 0
+			for _, b := range payload {
+				h = h*31 + int(b)
 			}
-			h := int(seed%100) + len(payload)*31 + len(name)*7
-			// also mix in a cheap pseudo-random from payload to avoid always dropping same payload
-			for i, b := range payload {
-				if i > 8 {
-					break
-				}
-				h += int(b) * (i + 1)
-			}
-			// add jitter: if h%100 < loss*100, drop; but vary with seed so retries may succeed
-			if float64((h%100+100)%100)/100.0 < cfg.Loss && (seed%3 != 0) {
+			h += len(name)
+			if float64(h%100)/100.0 < cfg.Loss {
 				continue
-			}
-			// fallback true random for wall-clock runs
-			if c.clk == nil {
-				// wall clock path: use global rand
-				// (imported as math/rand, already used elsewhere)
-				// keep deterministic for virtual clock, random for real
 			}
 		}
 		targets = append(targets, n)

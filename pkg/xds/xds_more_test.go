@@ -2,6 +2,7 @@ package xds_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,14 +24,14 @@ func TestBootstrapGenerate(t *testing.T) {
 }
 
 func TestDebouncer(t *testing.T) {
-	var n int
-	d := xds.NewDebouncer(30*time.Millisecond, func() { n++ })
+	var n atomic.Int64
+	d := xds.NewDebouncer(30*time.Millisecond, func() { n.Add(1) })
 	for i := 0; i < 10; i++ {
 		d.Touch()
 	}
 	time.Sleep(80 * time.Millisecond)
-	if n != 1 {
-		t.Fatalf("want 1 coalesced push, got %d", n)
+	if got := n.Load(); got != 1 {
+		t.Fatalf("want 1 coalesced push, got %d", got)
 	}
 }
 
