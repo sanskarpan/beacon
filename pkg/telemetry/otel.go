@@ -21,11 +21,25 @@ import (
 var (
 	globalTracer trace.Tracer
 	initOnce     sync.Once
+	mu           sync.Mutex
 )
+
+// ResetForTest clears the once guard so tests can call Init with different ids.
+// Not for production use.
+func ResetForTest() {
+	mu.Lock()
+	defer mu.Unlock()
+	initOnce = sync.Once{}
+	globalTracer = nil
+	otel.SetTracerProvider(trace.NewNoopTracerProvider())
+}
 
 // Init sets up the global OTel provider with a simple stdout exporter.
 // Call this once at server startup. id and serviceVersion identify the node.
 func Init(id, serviceVersion string) {
+	mu.Lock()
+	defer mu.Unlock()
+	// allow re-init if ResetForTest was called (initOnce zero)
 	initOnce.Do(func() {
 		res, _ := resource.Merge(
 			resource.Default(),

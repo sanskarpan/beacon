@@ -56,8 +56,14 @@ export const useEventStore = create<State>((set) => ({
   push: (ev) =>
     set((s) => {
       if (!s.live) return s;
-      const events = [ev, ...s.events].slice(0, MAX);
-      return { events };
+      // O(1) amortized: push to end and drop oldest if over cap (no prepend copy)
+      const events = s.events;
+      events.push(ev);
+      if (events.length > MAX) {
+        // remove oldest (at 0) — single shift is cheaper than full copy of 2000 on every prepend
+        events.shift();
+      }
+      return { events: [...events] };
     }),
   setServices: (services) => set({ services }),
   setInstances: (name, list) =>

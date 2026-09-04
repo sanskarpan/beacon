@@ -92,7 +92,14 @@ type Bus struct {
 	nextID  uint64
 	dropped atomic.Uint64
 	jsonl   io.Writer
-	filter  func(Event) bool
+	filter  func(Event) bool // optional: if set, Publish drops events where filter returns false
+}
+
+// SetFilter installs a bus-level filter. Nil clears it.
+func (b *Bus) SetFilter(fn func(Event) bool) {
+	b.mu.Lock()
+	b.filter = fn
+	b.mu.Unlock()
 }
 
 // NewBus creates an event bus. clk may be nil (wall clock used).
@@ -139,12 +146,16 @@ func (b *Bus) Publish(ev Event) {
 		ev.Timestamp = b.clk.Now()
 	}
 	b.mu.RLock()
+	filter := b.filter
 	jsonl := b.jsonl
 	subs := make([]chan Event, 0, len(b.subs))
 	for _, ch := range b.subs {
 		subs = append(subs, ch)
 	}
 	b.mu.RUnlock()
+	if filter != nil && !filter(ev) {
+		return
+	}
 
 	if jsonl != nil {
 		_ = json.NewEncoder(jsonl).Encode(ev)
