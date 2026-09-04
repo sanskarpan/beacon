@@ -9,6 +9,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: read-only at top level (Scorecard Token-Permissions).
+permissions:
+  contents: read
+
 jobs:
   go:
     runs-on: ubuntu-latest

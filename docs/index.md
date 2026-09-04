@@ -1,7 +1,7 @@
 # beacon docs
 
 Published to GitHub Pages on every push to `main`
-([`pages.yml`](../.github/workflows/pages.yml), MkDocs Material).
+(`.github/workflows/pages.yml`, MkDocs Material).
 
 Start here:
 

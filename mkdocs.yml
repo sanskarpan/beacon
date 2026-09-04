@@ -22,6 +22,7 @@ nav:
   - xDS: XDS.md
   - Integration: INTEGRATION.md
   - Anti-Entropy: ANTI_ENTROPY.md
+  - Event Schema: EVENT_SCHEMA.md
   - Console: CONSOLE.md
   - SLOs: SLO.md
   - Disaster Recovery: DISASTER-RECOVERY.md
