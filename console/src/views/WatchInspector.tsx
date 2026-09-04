@@ -99,7 +99,7 @@ export default function WatchInspector() {
               {watchers.length === 0 && (
                 <tr>
                   <td colSpan={3} className="px-4 py-6 text-slate-600 text-center">
-                    No watchers — open via `beacon watch <service>` or SDK resolver
+                    No watchers — open via `beacon watch &lt;service&gt;` or SDK resolver
                   </td>
                 </tr>
               )}
