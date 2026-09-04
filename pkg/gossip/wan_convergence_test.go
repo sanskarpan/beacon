@@ -69,7 +69,7 @@ func TestWAN_MultiDCConvergence(t *testing.T) {
 	// --- WAN flood + deliver: DC1 pushes, DC2 receives ---
 	// In production, Flood serializes the payload and sends it over the wire.
 	// The remote DC receives it and calls Deliver. We simulate both sides.
-	wanDC1.Flood(1, payload)             // DC1 side: fires handlers on DC1's pool for dc2
+	wanDC1.Flood(1, payload)          // DC1 side: fires handlers on DC1's pool for dc2
 	wanDC2.Deliver("dc1", 1, payload) // DC2 side: simulates receiving from dc1
 
 	// Verify DC2 received the payload.
@@ -117,7 +117,7 @@ func TestWAN_PartitionBetweenDCs(t *testing.T) {
 	// Build nodes: dc1 group (n0..n2) and dc2 group (n3..n5).
 	dc1Names := []string{"dc1-n0", "dc1-n1", "dc1-n2"}
 	dc2Names := []string{"dc2-n0", "dc2-n1", "dc2-n2"}
-	allNames := append(dc1Names, dc2Names...)
+	allNames := append(append([]string(nil), dc1Names...), dc2Names...)
 
 	nodes := make(map[string]*gossip.MemoryMembership, len(allNames))
 	for i, name := range allNames {

@@ -79,12 +79,12 @@ func NewCA(clk clock.Clock) (*CA, error) {
 		return nil, err
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "beacon-ca"},
-		NotBefore:    clk.Now().Add(-time.Hour),
-		NotAfter:     clk.Now().Add(10 * 365 * 24 * time.Hour),
-		IsCA:         true,
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "beacon-ca"},
+		NotBefore:             clk.Now().Add(-time.Hour),
+		NotAfter:              clk.Now().Add(10 * 365 * 24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
@@ -96,25 +96,38 @@ func NewCA(clk clock.Clock) (*CA, error) {
 		return nil, err
 	}
 	return &CA{
-		clk:                clk,
-		key:                key,
-		cert:               cert,
-		certPEM:            pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
-		leafTTL:            24 * time.Hour,
-		serial:             big.NewInt(1),
-		entitlements:       make(map[string]map[string]bool),
-		insecureAllowAll:   true, // dev-mode default for backward compat; call SetInsecureAllowAll(false) for secure prod (M20)
+		clk:              clk,
+		key:              key,
+		cert:             cert,
+		certPEM:          pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		leafTTL:          24 * time.Hour,
+		serial:           big.NewInt(1),
+		entitlements:     make(map[string]map[string]bool),
+		insecureAllowAll: true, // dev-mode default for backward compat; production must use NewCAProduction (fail-closed)
 	}, nil
 }
 
-	// SetInsecureAllowAll enables dev-mode where any workload may request any SPIFFE when no entitlements configured.
+// NewCAProduction creates a root CA with fail-closed entitlement enforcement:
+// Sign denies any workload→SPIFFE pair that was not explicitly entitled via
+// Entitle. This is the constructor production deployments must use.
+// NewCA is retained for dev/test backward compatibility.
+func NewCAProduction(clk clock.Clock) (*CA, error) {
+	ca, err := NewCA(clk)
+	if err != nil {
+		return nil, err
+	}
+	ca.SetInsecureAllowAll(false)
+	return ca, nil
+}
+
+// SetInsecureAllowAll enables dev-mode where any workload may request any SPIFFE when no entitlements configured.
 func (c *CA) SetInsecureAllowAll(v bool) {
 	c.mu.Lock()
 	c.insecureAllowAll = v
 	c.mu.Unlock()
 }
 
-	// Bundle returns the trust bundle PEM.
+// Bundle returns the trust bundle PEM.
 func (c *CA) Bundle() []byte {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -144,12 +157,12 @@ func (c *CA) NewIntermediateCA(clk clock.Clock) (*CA, error) {
 		return nil, err
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "beacon-intermediate"},
-		NotBefore:    clk.Now().Add(-time.Hour),
-		NotAfter:     clk.Now().Add(365 * 24 * time.Hour),
-		IsCA:         true,
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "beacon-intermediate"},
+		NotBefore:             clk.Now().Add(-time.Hour),
+		NotAfter:              clk.Now().Add(365 * 24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
 	}
 	c.mu.Lock()
@@ -177,16 +190,16 @@ func (c *CA) NewIntermediateCA(clk clock.Clock) (*CA, error) {
 	allowAll := c.insecureAllowAll
 	c.mu.Unlock()
 	return &CA{
-		clk:                clk,
-		key:                key,
-		cert:               cert,
-		certPEM:            pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
-		leafTTL:            c.leafTTL,
-		serial:             big.NewInt(1),
-		entitlements:       entCopy,
-		parent:             c,
-		isIntermediate:     true,
-		insecureAllowAll:   allowAll,
+		clk:              clk,
+		key:              key,
+		cert:             cert,
+		certPEM:          pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		leafTTL:          c.leafTTL,
+		serial:           big.NewInt(1),
+		entitlements:     entCopy,
+		parent:           c,
+		isIntermediate:   true,
+		insecureAllowAll: allowAll,
 	}, nil
 }
 
@@ -350,7 +363,7 @@ func (s *IntentionStore) Delete(source, dest string) {
 	defer s.mu.Unlock()
 	keep := s.list[:0]
 	for _, i := range s.list {
-		if !(i.Source == source && i.Destination == dest) {
+		if i.Source != source || i.Destination != dest {
 			keep = append(keep, i)
 		}
 	}

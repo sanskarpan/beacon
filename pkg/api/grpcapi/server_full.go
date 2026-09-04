@@ -20,8 +20,8 @@ import (
 // Server is a live gRPC Discovery server with keepalive and graceful drain.
 type Server struct {
 	UnimplementedDiscoveryServer
-	inner   *DiscoveryServer
-	gs      *grpc.Server
+	inner    *DiscoveryServer
+	gs       *grpc.Server
 	draining atomic.Bool
 	streams  atomic.Int64
 	bus      *events.Bus
@@ -224,8 +224,8 @@ type watchServerStream struct {
 	grpc.ServerStream
 }
 
-func (w *watchServerStream) Send(m *WatchEvent) error { return w.ServerStream.SendMsg(m) }
-func (w *watchServerStream) Context() context.Context  { return w.ServerStream.Context() }
+func (w *watchServerStream) Send(m *WatchEvent) error { return w.SendMsg(m) }
+func (w *watchServerStream) Context() context.Context { return w.ServerStream.Context() }
 
 // Ensure interface satisfaction for generics-style aliases used above.
 // Go 1.23+ has grpc.ServerStreamingServer; for older we use the wrapper.
@@ -234,10 +234,10 @@ type watchMultiStream struct {
 	grpc.ServerStream
 }
 
-func (w *watchMultiStream) Send(m *WatchEvent) error   { return w.ServerStream.SendMsg(m) }
+func (w *watchMultiStream) Send(m *WatchEvent) error { return w.SendMsg(m) }
 func (w *watchMultiStream) Recv() (*WatchMultiRequest, error) {
 	m := new(WatchMultiRequest)
-	if err := w.ServerStream.RecvMsg(m); err != nil {
+	if err := w.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil

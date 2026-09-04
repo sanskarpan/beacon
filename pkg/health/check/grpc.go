@@ -32,9 +32,12 @@ func (c *GRPCCheck) Run(ctx context.Context) (catalog.HealthStatus, string, erro
 	dial := c.Dial
 	if dial == nil {
 		dial = func(ctx context.Context, target string) (*grpc.ClientConn, error) {
-			return grpc.DialContext(ctx, target, //nolint:staticcheck // intentional short-lived probe
+			// WithBlock is load-bearing here: the probe must block until
+			// connected or ctx timeout; NewClient would always succeed and
+			// mask down backends.
+			return grpc.DialContext(ctx, target, //nolint:staticcheck
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
-				grpc.WithBlock(),
+				grpc.WithBlock(), //nolint:staticcheck
 			)
 		}
 	}
@@ -42,7 +45,7 @@ func (c *GRPCCheck) Run(ctx context.Context) (catalog.HealthStatus, string, erro
 	if err != nil {
 		return catalog.HealthCritical, err.Error(), nil
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	cli := healthpb.NewHealthClient(conn)
 	resp, err := cli.Check(ctx, &healthpb.HealthCheckRequest{Service: c.ServiceName})

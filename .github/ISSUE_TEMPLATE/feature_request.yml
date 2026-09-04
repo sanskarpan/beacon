@@ -1,0 +1,15 @@
+name: Feature request
+description: Propose an enhancement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Problem, description: "What SPEC phase / SLO does this serve?" }
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes: { label: Proposal }
+    validations: { required: true }
+  - type: textarea
+    id: alt
+    attributes: { label: Alternatives considered }

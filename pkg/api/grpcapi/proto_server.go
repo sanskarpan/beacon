@@ -177,8 +177,8 @@ func toWire(in *catalog.Instance) *pb.Instance {
 	}
 	return &pb.Instance{
 		Id: in.ID, Service: in.Service, Node: in.Node,
-		Address: in.Address, Port: int32(in.Port),
-		Tags: in.Tags, Meta: in.Meta, Weight: int32(in.Weight),
+		Address: in.Address, Port: clampInt32(in.Port),
+		Tags: in.Tags, Meta: in.Meta, Weight: clampInt32(in.Weight),
 		Health: string(in.Health), Region: in.Locality.Region, Zone: in.Locality.Zone,
 	}
 }

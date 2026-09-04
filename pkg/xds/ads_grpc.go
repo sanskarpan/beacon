@@ -169,7 +169,7 @@ func (c *LiveClient) readLoop() {
 // SendRequest writes a DiscoveryRequest.
 func (c *LiveClient) SendRequest(req *DiscoveryRequest) error {
 	return c.stream.SendMsg(req)
-}// RecvResponse reads one DiscoveryResponse.
+} // RecvResponse reads one DiscoveryResponse.
 func (c *LiveClient) RecvResponse() (*DiscoveryResponse, error) {
 	res, ok := <-c.incoming
 	if !ok {

@@ -47,7 +47,7 @@ func TestDNSTruncationSetsTC(t *testing.T) {
 	// many instances → large answer
 	for i := 0; i < 80; i++ {
 		_, _ = cs.Register(context.Background(), &catalog.Instance{
-			ID: string(rune('a'+(i%26))) + string(rune('0'+i/26)),
+			ID:      string(rune('a'+(i%26))) + string(rune('0'+i/26)),
 			Service: "big", Node: "n", Address: "10.0.0.1", Port: 8000 + i,
 			Health: catalog.HealthPassing, Weight: 1,
 		})

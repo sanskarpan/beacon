@@ -57,9 +57,9 @@ func buildInfected(t *testing.T, n int, cfg gossip.NetworkConfig) (elapsed time.
 func TestConvergenceHopsScaleLogN(t *testing.T) {
 	sizes := []int{10, 100, 1000}
 	type row struct {
-		n        int
-		elapsed  time.Duration
-		hops     int
+		n         int
+		elapsed   time.Duration
+		hops      int
 		delivered int64
 	}
 	rows := make([]row, 0, len(sizes))

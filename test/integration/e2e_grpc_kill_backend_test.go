@@ -88,6 +88,13 @@ func TestE2E_GRPCKillBackendReroute(t *testing.T) {
 
 	// Start two real gRPC backends.
 	backends := make([]*backendServer, 2)
+	t.Cleanup(func() {
+		for _, b := range backends {
+			if b != nil {
+				b.stop()
+			}
+		}
+	})
 	for i := 0; i < 2; i++ {
 		lis, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -96,11 +103,10 @@ func TestE2E_GRPCKillBackendReroute(t *testing.T) {
 		b := &backendServer{id: fmt.Sprintf("b%d", i), lis: lis}
 		backends[i] = b
 		go func() { _ = b.serve() }()
-		defer b.stop()
 
 		host, portStr, _ := net.SplitHostPort(lis.Addr().String())
 		var port int
-		fmt.Sscanf(portStr, "%d", &port)
+		_, _ = fmt.Sscanf(portStr, "%d", &port)
 		_, err = cs.Register(context.Background(), &catalog.Instance{
 			ID:      b.id,
 			Service: "echo",

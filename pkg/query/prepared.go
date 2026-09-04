@@ -21,14 +21,14 @@ type Failover struct {
 
 // PreparedQuery is a named, reusable discovery query.
 type PreparedQuery struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Service     string              `json:"service"`
-	Tags        []string            `json:"tags,omitempty"`
-	PassingOnly bool                `json:"passing_only"`
-	Filter      string              `json:"filter,omitempty"`
-	Failover    Failover            `json:"failover,omitempty"`
-	Meta        map[string]string   `json:"meta,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Service     string            `json:"service"`
+	Tags        []string          `json:"tags,omitempty"`
+	PassingOnly bool              `json:"passing_only"`
+	Filter      string            `json:"filter,omitempty"`
+	Failover    Failover          `json:"failover,omitempty"`
+	Meta        map[string]string `json:"meta,omitempty"`
 }
 
 // Store holds prepared queries.

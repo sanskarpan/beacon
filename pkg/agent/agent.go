@@ -80,9 +80,9 @@ type Agent struct {
 	lastSync time.Time
 	minSync  time.Duration
 	// read cache with staleness allowance
-	readCache    map[string]cachedRead
-	maxStale     time.Duration
-	serveStale   bool
+	readCache  map[string]cachedRead
+	maxStale   time.Duration
+	serveStale bool
 }
 
 type cachedRead struct {
@@ -94,7 +94,7 @@ type cachedRead struct {
 type Config struct {
 	NodeName    string
 	Client      CatalogClient
-	Reader      ReadClient // optional remote catalog reads
+	Reader      ReadClient     // optional remote catalog reads
 	Store       *catalog.Store // used for local health updates when Client is LocalClient
 	Bus         *events.Bus
 	Clock       clock.Clock
@@ -333,21 +333,24 @@ func (a *Agent) persist() error {
 	if a.dataDir == "" {
 		return nil
 	}
-	if err := os.MkdirAll(a.dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(a.dataDir, 0o750); err != nil {
 		return err
 	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
+	// Path is operator-configured --data-dir joined with a fixed filename, not user input.
 	path := filepath.Join(a.dataDir, "services.json")
-	f, err := os.Create(path + ".tmp")
+	f, err := os.Create(path + ".tmp") //nolint:gosec // G304: fixed filename under operator data-dir
 	if err != nil {
 		return err
 	}
 	if err := json.NewEncoder(f).Encode(a.local); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
 	return os.Rename(path+".tmp", path)
 }
 
@@ -355,15 +358,16 @@ func (a *Agent) load() error {
 	if a.dataDir == "" {
 		return nil
 	}
+	// Path is operator-configured --data-dir joined with a fixed filename, not user input.
 	path := filepath.Join(a.dataDir, "services.json")
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: fixed filename under operator data-dir
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var m map[string]*catalog.Instance
 	if err := json.NewDecoder(f).Decode(&m); err != nil {
 		return err

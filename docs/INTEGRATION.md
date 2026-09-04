@@ -35,3 +35,16 @@ func (c *Client) OutcomeReporter() grpc.UnaryClientInterceptor
 ```
 
 which records per-endpoint outcomes into `outlier.Detector`. Picker `Done` callbacks do the same. Applications do not know about passive health checking.
+
+## Production swap (remove local stubs)
+
+The `replace` directives in `go.mod` point at `external/gossip-system` and
+`external/grpc-service` so CI builds without network access. For production:
+
+1. Publish (or vendor) the real SWIM + interceptors modules.
+2. Implement the thin adapter: SWIM `Join/Leave/Members` → `Membership`
+   (`Subscribe` failure events, `Broadcast` piggyback ≤512B); interceptor
+   chain + beacon `OutcomeReporter` appended last.
+3. Delete the `replace` lines, `go mod tidy`, run `go test -race ./...`.
+4. Gate with `TestConvergenceHopsScaleLogN` (O(log N)) and
+   `TestInterceptors_OrderAndMetrics` (chain order).

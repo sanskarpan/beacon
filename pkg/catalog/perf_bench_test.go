@@ -143,7 +143,7 @@ func TestCombinedStress(t *testing.T) {
 					ID:      fmt.Sprintf("stress-%d-%d", w, i),
 					Service: fmt.Sprintf("stress-svc-%d", w),
 					Address: "10.0.0.1", Port: 8080 + i,
-					Health:  catalog.HealthPassing, Node: "node-0",
+					Health: catalog.HealthPassing, Node: "node-0",
 				})
 			}
 		}

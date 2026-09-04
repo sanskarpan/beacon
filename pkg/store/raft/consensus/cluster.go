@@ -425,12 +425,12 @@ func (m *memSnapshotStore) Delete(string) error                    { return nil 
 
 // Node is one CP participant backed by real Raft-Consensus.
 type Node struct {
-	ID   string
-	Raft raftlib.Raft
-	FSM  *CatalogFSM
+	ID    string
+	Raft  raftlib.Raft
+	FSM   *CatalogFSM
 	trans *chanTransport
-	clk  clock.Clock
-	bus  *events.Bus
+	clk   clock.Clock
+	bus   *events.Bus
 }
 
 // Cluster is a multi-node CP catalog cluster using Raft-Consensus.

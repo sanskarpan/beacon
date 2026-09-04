@@ -40,7 +40,7 @@ func (c *HTTPCheck) Run(ctx context.Context) (catalog.HealthStatus, string, erro
 	if err != nil {
 		return catalog.HealthCritical, err.Error(), nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 	out := fmt.Sprintf("HTTP %d: %s", resp.StatusCode, Truncate(string(body), 200))
 	switch {

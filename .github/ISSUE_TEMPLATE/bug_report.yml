@@ -1,0 +1,21 @@
+name: Bug report
+description: Report a reproducible defect
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes: { label: Version, description: "git sha / tag, e.g. v0.2.0 (2199ebc)" }
+    validations: { required: true }
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [catalog, health, agent, gossip, raft, watch, http, grpc, dns, lb, sdk, xds, mesh, sim, console, docs, deploy]
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes: { label: Reproduction, description: "Exact commands + expected vs actual" }
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes: { label: Logs, description: "go test -run / server logs / trace ID" }

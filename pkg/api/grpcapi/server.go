@@ -20,17 +20,17 @@ import (
 
 // Instance proto-like struct.
 type PBInstance struct {
-	Id       string            `json:"id"`
-	Service  string            `json:"service"`
-	Node     string            `json:"node"`
-	Address  string            `json:"address"`
-	Port     int32             `json:"port"`
-	Tags     []string          `json:"tags"`
-	Meta     map[string]string `json:"meta"`
-	Weight   int32             `json:"weight"`
-	Health   string            `json:"health"`
-	Region   string            `json:"region"`
-	Zone     string            `json:"zone"`
+	Id      string            `json:"id"`
+	Service string            `json:"service"`
+	Node    string            `json:"node"`
+	Address string            `json:"address"`
+	Port    int32             `json:"port"`
+	Tags    []string          `json:"tags"`
+	Meta    map[string]string `json:"meta"`
+	Weight  int32             `json:"weight"`
+	Health  string            `json:"health"`
+	Region  string            `json:"region"`
+	Zone    string            `json:"zone"`
 }
 
 // WatchRequest starts a watch.
@@ -50,8 +50,8 @@ type WatchEvent struct {
 
 // WatchMultiRequest adds/removes subscriptions.
 type WatchMultiRequest struct {
-	Op      string `json:"op"` // subscribe | unsubscribe
-	Service string `json:"service"`
+	Op        string `json:"op"` // subscribe | unsubscribe
+	Service   string `json:"service"`
 	FromIndex uint64 `json:"from_index"`
 }
 
@@ -259,8 +259,20 @@ func StartGRPC(lis net.Listener, st store.CatalogStore, w *watch.Registry, bus *
 	// Register a generic service using UnknownServiceHandler for flexibility is too loose.
 	// We register nothing proto-generated; callers use DiscoveryServer methods directly in tests.
 	// For production binary we still start grpc server for health.
-	go gs.Serve(lis)
+	go func() { _ = gs.Serve(lis) }()
 	return gs, nil
+}
+
+// clampInt32 bounds instance fields (port/weight) into int32 range;
+// negatives clamp to 0 since negative ports/weights are never valid.
+func clampInt32(v int) int32 {
+	if v < 0 {
+		return 0
+	}
+	if v > 0x7FFFFFFF {
+		return 0x7FFFFFFF
+	}
+	return int32(v) //nolint:gosec // G115: bounded above by construction
 }
 
 func toPB(in *catalog.Instance) *PBInstance {
@@ -269,8 +281,8 @@ func toPB(in *catalog.Instance) *PBInstance {
 	}
 	return &PBInstance{
 		Id: in.ID, Service: in.Service, Node: in.Node,
-		Address: in.Address, Port: int32(in.Port),
-		Tags: in.Tags, Meta: in.Meta, Weight: int32(in.Weight),
+		Address: in.Address, Port: clampInt32(in.Port),
+		Tags: in.Tags, Meta: in.Meta, Weight: clampInt32(in.Weight),
 		Health: string(in.Health), Region: in.Locality.Region, Zone: in.Locality.Zone,
 	}
 }
@@ -280,7 +292,7 @@ func fromPB(p *PBInstance) *catalog.Instance {
 		ID: p.Id, Service: p.Service, Node: p.Node,
 		Address: p.Address, Port: int(p.Port),
 		Tags: p.Tags, Meta: p.Meta, Weight: int(p.Weight),
-		Health: catalog.HealthStatus(p.Health),
+		Health:   catalog.HealthStatus(p.Health),
 		Locality: catalog.Locality{Region: p.Region, Zone: p.Zone},
 	}
 }

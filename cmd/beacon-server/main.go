@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/sanskar/beacon/pkg/api/dns"
+	"github.com/sanskar/beacon/pkg/api/grpcapi"
 	"github.com/sanskar/beacon/pkg/api/httpapi"
 	"github.com/sanskar/beacon/pkg/catalog"
 	"github.com/sanskar/beacon/pkg/clock"
@@ -27,20 +29,21 @@ import (
 
 func main() {
 	var (
-		httpAddr     = flag.String("http", ":8500", "HTTP API listen address")
-		dnsAddr      = flag.String("dns", ":8600", "DNS listen address")
-		consistency  = flag.String("consistency", "ap", "catalog backend: ap|cp")
-		nodeName     = flag.String("node", "server-1", "node name")
-		join         = flag.String("join", "", "seed node for gossip")
-		bootstrap    = flag.Int("bootstrap-expect", 1, "CP cluster size hint")
+		httpAddr    = flag.String("http", ":8500", "HTTP API listen address")
+		dnsAddr     = flag.String("dns", ":8600", "DNS listen address")
+		grpcAddr    = flag.String("grpc", ":8502", "gRPC Discovery listen address (empty disables)")
+		consistency = flag.String("consistency", "ap", "catalog backend: ap|cp")
+		nodeName    = flag.String("node", "server-1", "node name")
+		join        = flag.String("join", "", "seed node for gossip")
+		bootstrap   = flag.Int("bootstrap-expect", 1, "CP cluster size hint")
 	)
 	flag.Parse()
 
 	clk := clock.New()
 	bus := events.NewBus(clk)
-	cs := catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus), catalog.WithBatchWindow(0))
-	// disable batcher for interactive server by not using window 0 oddly — use default without batch for simplicity
-	cs = catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus))
+	// Default store (batching enabled); interactive latency stays low because
+	// the batch window only coalesces writes within 50ms.
+	cs := catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus))
 
 	wr := watch.NewRegistry(cs, watch.WithWatchClock(clk), watch.WithWatchBus(bus))
 
@@ -87,9 +90,18 @@ func main() {
 		PassingOnly: true,
 	})
 
+	// http.Server with timeouts (G114 Slowloris-safe) + graceful shutdown.
+	httpServer := &http.Server{
+		Addr:              *httpAddr,
+		Handler:           httpSrv.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	go func() {
 		log.Printf("HTTP API on %s", *httpAddr)
-		if err := http.ListenAndServe(*httpAddr, httpSrv.Handler()); err != nil {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
 	}()
@@ -100,20 +112,33 @@ func main() {
 		}
 	}()
 
-	// optional gRPC listen for future proto wiring
-	go func() {
-		lis, err := net.Listen("tcp", ":8502")
+	// gRPC Discovery API (Watch/WatchMulti/Register) over real wire stubs.
+	var protoSrv *grpcapi.ProtoServer
+	if *grpcAddr != "" {
+		lis, err := net.Listen("tcp", *grpcAddr)
 		if err != nil {
-			log.Printf("grpc listen: %v", err)
-			return
+			log.Fatalf("grpc listen %s: %v", *grpcAddr, err)
 		}
-		log.Printf("gRPC placeholder on %s", lis.Addr())
-		<-context.Background().Done()
-	}()
+		protoSrv = grpcapi.NewProtoServer(catalogStore, wr, bus, nil)
+		go func() {
+			log.Printf("gRPC Discovery on %s", lis.Addr())
+			if err := protoSrv.Serve(lis); err != nil {
+				log.Printf("grpc serve: %v", err)
+			}
+		}()
+	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	log.Println("shutting down")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("http shutdown: %v", err)
+	}
+	if protoSrv != nil {
+		protoSrv.GracefulStop()
+	}
 	dnsSrv.Shutdown()
 }

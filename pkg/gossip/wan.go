@@ -78,7 +78,7 @@ func (w *WANPool) OnFlood(dc string, fn func(fromDC string, index uint64, payloa
 		for _, link := range w.dcs {
 			link.Handlers = append(link.Handlers, fn)
 		}
-			if w.dcs[w.self] == nil {
+		if w.dcs[w.self] == nil {
 			w.dcs[w.self] = &DCLink{Name: w.self, Handlers: append([]func(string, uint64, []byte){}, w.wildcardHandlers...)}
 		}
 		return

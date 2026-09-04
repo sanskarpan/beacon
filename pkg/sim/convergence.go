@@ -108,7 +108,7 @@ func (r *Runner) Sweep() ([]SweepSize, error) {
 		if err := writeJSONFile(r.outDir+"/sweep.json", rows); err != nil {
 			return rows, err
 		}
-		if err := os.WriteFile(r.outDir+"/sweep.md", []byte(md), 0o644); err != nil {
+		if err := os.WriteFile(r.outDir+"/sweep.md", []byte(md), 0o600); err != nil {
 			return rows, err
 		}
 	}
@@ -144,5 +144,5 @@ func writeJSONFile(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+	return os.WriteFile(path, b, 0o600)
 }

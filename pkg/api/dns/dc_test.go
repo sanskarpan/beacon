@@ -1,6 +1,7 @@
 package dns_test
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
@@ -16,7 +17,7 @@ import (
 func TestDNS_ServiceGlobally(t *testing.T) {
 	cs := catalog.NewStore()
 	for i := 0; i < 5; i++ {
-		_, _ = cs.Register(nil, &catalog.Instance{
+		_, _ = cs.Register(context.Background(), &catalog.Instance{
 			ID: fmt.Sprintf("web-%d", i), Service: "web",
 			Address: "10.0.0.1", Port: 8080 + i,
 			Health: catalog.HealthPassing, Node: fmt.Sprintf("node-%d", i),
@@ -82,11 +83,11 @@ func TestDNS_WrongDomain_NXDOMAIN(t *testing.T) {
 
 func TestDNS_TagFilter(t *testing.T) {
 	cs := catalog.NewStore()
-	_, _ = cs.Register(nil, &catalog.Instance{
+	_, _ = cs.Register(context.Background(), &catalog.Instance{
 		ID: "api-v1", Service: "api", Address: "10.0.1.1", Port: 8080,
 		Health: catalog.HealthPassing, Node: "node-0", Tags: []string{"v1"},
 	})
-	_, _ = cs.Register(nil, &catalog.Instance{
+	_, _ = cs.Register(context.Background(), &catalog.Instance{
 		ID: "api-v2", Service: "api", Address: "10.0.2.1", Port: 8080,
 		Health: catalog.HealthPassing, Node: "node-1", Tags: []string{"v2"},
 	})
@@ -107,7 +108,7 @@ func TestDNS_TagFilter(t *testing.T) {
 
 func TestDNS_SRVRecord(t *testing.T) {
 	cs := catalog.NewStore()
-	_, _ = cs.Register(nil, &catalog.Instance{
+	_, _ = cs.Register(context.Background(), &catalog.Instance{
 		ID: "web-1", Service: "web", Address: "10.0.0.1", Port: 8080,
 		Health: catalog.HealthPassing, Node: "node-0", Weight: 5,
 	})
@@ -138,11 +139,11 @@ func TestDNS_SRVRecord(t *testing.T) {
 
 func TestDNS_NodeQuery(t *testing.T) {
 	cs := catalog.NewStore()
-	_, _ = cs.Register(nil, &catalog.Instance{
+	_, _ = cs.Register(context.Background(), &catalog.Instance{
 		ID: "svc-1", Service: "web", Address: "10.0.0.1", Port: 8080,
 		Health: catalog.HealthPassing, Node: "web-node-1",
 	})
-	_, _ = cs.Register(nil, &catalog.Instance{
+	_, _ = cs.Register(context.Background(), &catalog.Instance{
 		ID: "svc-2", Service: "api", Address: "10.0.0.2", Port: 9090,
 		Health: catalog.HealthPassing, Node: "web-node-1",
 	})

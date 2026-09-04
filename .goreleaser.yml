@@ -1,0 +1,35 @@
+version: 2
+project_name: beacon
+before:
+  hooks: [go mod tidy]
+builds:
+  - id: beacon
+    main: ./cmd/beacon
+    binary: beacon
+    ldflags: ["-s", "-w", "-X main.version={{.Version}}"]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+  - id: beacon-server
+    main: ./cmd/beacon-server
+    binary: beacon-server
+    ldflags: ["-s", "-w", "-X main.version={{.Version}}"]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+  - id: beacon-agent
+    main: ./cmd/beacon-agent
+    binary: beacon-agent
+    ldflags: ["-s", "-w", "-X main.version={{.Version}}"]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+dockers:
+  - image_templates: ["ghcr.io/sanskarpan/beacon:{{.Version}}", "ghcr.io/sanskarpan/beacon:latest"]
+    dockerfile: Dockerfile.server
+    build_flag_templates: ["--build-arg=VERSION={{.Version}}"]
+checksum: { name_template: checksums.txt }
+sbom: { artifacts: true }
+signs:
+  - artifacts: checksum
+    args: [--yes]
+changelog:
+  sort: asc
+  filters: { exclude: [^docs:, ^chore:, ^test:] }

@@ -1,0 +1,40 @@
+openapi: 3.0.3
+info: { title: beacon HTTP API, version: 0.2.0 }
+servers: [{ url: http://localhost:8500 }]
+paths:
+  /v1/agent/service/register:
+    put:
+      summary: Register a service instance
+      responses: { "200": { description: OK } }
+  /v1/agent/service/deregister/{id}:
+    put:
+      summary: Deregister an instance
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK } }
+  /v1/catalog/service/{name}:
+    get:
+      summary: Blocking query for a service
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+        - { name: index, in: query, schema: { type: integer } }
+        - { name: wait, in: query, schema: { type: string } }
+        - { name: passing, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Result with X-Beacon-Index header
+          headers: { X-Beacon-Index: { schema: { type: integer } } }
+  /v1/health/service/{name}:
+    get:
+      summary: Per-check health detail
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK } }
+  /v1/watch/stats:
+    get: { summary: Open-watcher table, responses: { "200": { description: OK } } }
+  /v1/events:
+    get: { summary: SSE event stream, responses: { "200": { description: text/event-stream } } }
+  /health:
+    get: { summary: Liveness, responses: { "200": { description: OK } } }
+  /ready:
+    get: { summary: Readiness, responses: { "200": { description: OK } } }
+  /metrics:
+    get: { summary: Prometheus metrics, responses: { "200": { description: OK } } }

@@ -10,10 +10,12 @@
 package xds
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -239,7 +241,7 @@ func (s *Server) HandleRequest(req *DiscoveryRequest) []*DiscoveryResponse {
 				Detail: req.TypeURL + " " + req.VersionInfo,
 			})
 		}
-	} else if req.ResponseNonce != "" {
+	} else if req.ResponseNonce != "" { //nolint:staticcheck // SA9003: stale nonce is a subscription change, not an ACK — explicit no-op by design (SPEC §12).
 		// Stale nonce: not an ACK, just a subscription change
 	}
 
@@ -263,10 +265,12 @@ func (s *Server) HandleRequest(req *DiscoveryRequest) []*DiscoveryResponse {
 	}
 
 	snap := s.BuildSnapshot(req.NodeID)
-	// Push in AddOrder for full SotW of all types, or just the requested type.
+	// Push in dependency order for full SotW (AddOrder for config growth,
+	// RemoveOrder when previously-pushed types were deleted), or just the
+	// requested type.
 	types := []string{req.TypeURL}
 	if req.TypeURL == "" || req.TypeURL == "ads" {
-		types = AddOrder
+		types = OrderedTypes(snap, st.LastVersion)
 	}
 
 	var out []*DiscoveryResponse
@@ -409,7 +413,7 @@ func (s *Server) DeltaResponse(nodeID, typeURL string, prev, curr *Snapshot) *Di
 	for _, r := range curr.Resources[typeURL] {
 		currNames[r.Name] = struct{}{}
 		old, ok := prevNames[r.Name]
-		if !ok || string(old.Body) != string(r.Body) {
+		if !ok || !bytes.Equal(old.Body, r.Body) {
 			changed = append(changed, r)
 		}
 	}
@@ -457,12 +461,22 @@ func SotWBytes(snap *Snapshot, typeURL string) int {
 	return n
 }
 
-func sortStrings(s []string) {
-	for i := 0; i < len(s); i++ {
-		for j := i + 1; j < len(s); j++ {
-			if s[j] < s[i] {
-				s[i], s[j] = s[j], s[i]
-			}
+func sortStrings(s []string) { sort.Strings(s) }
+
+// OrderedTypes returns the push order for a snapshot: AddOrder (make) and
+// RemoveOrder (break). Types with zero resources that were previously pushed
+// are ordered per RemoveOrder so Envoy drops listeners/routes before the
+// clusters they reference (make-before-break, SPEC §12).
+func OrderedTypes(snap *Snapshot, prev map[string]string) []string {
+	removal := false
+	for _, t := range RemoveOrder {
+		if len(snap.Resources[t]) == 0 && prev[t] != "" {
+			removal = true
+			break
 		}
 	}
+	if removal {
+		return RemoveOrder
+	}
+	return AddOrder
 }

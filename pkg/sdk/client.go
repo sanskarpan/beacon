@@ -61,8 +61,8 @@ type Client struct {
 	lastGood map[string][]catalog.Instance
 	// renew cancel funcs
 	renewers map[string]context.CancelFunc
-	rng      *rand.Rand
-	rngMu    sync.Mutex
+	// rng is guarded by the package-level backoffMu in BackoffWithJitter.
+	rng *rand.Rand
 }
 
 // Config for the client.
@@ -311,10 +311,11 @@ func (c *Client) persistCache(service string, insts []catalog.Instance) {
 	if c.cacheDir == "" {
 		return
 	}
-	_ = os.MkdirAll(c.cacheDir, 0o755)
+	_ = os.MkdirAll(c.cacheDir, 0o750)
+	// Path is SDK-configured cacheDir joined with the resolver service name, not remote input.
 	path := filepath.Join(c.cacheDir, service+".json")
 	b, _ := json.Marshal(insts)
-	_ = os.WriteFile(path, b, 0o644)
+	_ = os.WriteFile(path, b, 0o600) //nolint:gosec // G304: cache file under configured cacheDir
 }
 
 func (c *Client) loadCache(service string) []catalog.Instance {
@@ -327,7 +328,7 @@ func (c *Client) loadCache(service string) []catalog.Instance {
 	if c.cacheDir == "" {
 		return nil
 	}
-	b, err := os.ReadFile(filepath.Join(c.cacheDir, service+".json"))
+	b, err := os.ReadFile(filepath.Join(c.cacheDir, service+".json")) //nolint:gosec // G304: cache file under configured cacheDir
 	if err != nil {
 		return nil
 	}

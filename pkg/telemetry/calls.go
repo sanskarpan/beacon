@@ -69,6 +69,7 @@ func (g *CallGraph) Record(source, target string, err error) {
 	now := g.clk.Now()
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	//nolint:gocritic // appendAssign: appending the map value to a local then storing back is intentional (map values are not addressable).
 	ss := append(g.samples[k], sample{at: now, err: err != nil})
 	// prune
 	cut := now.Add(-g.window)

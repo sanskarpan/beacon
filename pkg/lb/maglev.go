@@ -69,13 +69,15 @@ func buildMaglev(n, m int, name func(int) string) []int {
 	type pref struct {
 		offset, skip uint32
 	}
+	// m > 0 guarded above; next[i] >= 0 by construction — conversions cannot overflow.
+	mu := uint32(m) //nolint:gosec // G115: bounded by constructor guard
 	prefs := make([]pref, n)
 	for i := 0; i < n; i++ {
 		h1 := fnv32(name(i) + "#offset")
 		h2 := fnv32(name(i) + "#skip")
 		prefs[i] = pref{
-			offset: h1 % uint32(m),
-			skip:   h2%(uint32(m)-1) + 1,
+			offset: h1 % mu,
+			skip:   h2%(mu-1) + 1,
 		}
 	}
 	entry := make([]int, m)
@@ -86,11 +88,11 @@ func buildMaglev(n, m int, name func(int) string) []int {
 	filled := 0
 	for filled < m {
 		for i := 0; i < n && filled < m; i++ {
-			c := int((prefs[i].offset + uint32(next[i])*prefs[i].skip) % uint32(m))
+			c := int((prefs[i].offset + uint32(next[i])*prefs[i].skip) % mu) //nolint:gosec // G115: next[i] >= 0 counter
 			next[i]++
 			// find next empty slot along permutation
 			for entry[c] >= 0 {
-				c = int((prefs[i].offset + uint32(next[i])*prefs[i].skip) % uint32(m))
+				c = int((prefs[i].offset + uint32(next[i])*prefs[i].skip) % mu) //nolint:gosec // G115: next[i] >= 0 counter
 				next[i]++
 			}
 			entry[c] = i

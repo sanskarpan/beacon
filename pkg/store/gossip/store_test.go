@@ -19,13 +19,7 @@ func TestGossipRegisterVisibleOnAllNodes(t *testing.T) {
 	const n = 10
 	stores := make([]*gstore.Store, n)
 	for i := 0; i < n; i++ {
-		name := string(rune('a' + i))
-		// use n0 style names
-		name = "n" + string(rune('0'+i))
-		if i >= 10 {
-			name = "nX"
-		}
-		name = "node" + string(rune('A'+i))
+		name := "node" + string(rune('A'+i))
 		m := gossip.NewMemory(cluster, name, "127.0.0.1", 1000+i)
 		cs := catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus))
 		stores[i] = gstore.New(gstore.Config{Local: cs, Membership: m, Bus: bus})

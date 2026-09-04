@@ -3,10 +3,10 @@
 // This is a single-process Raft-style replicated log with leader election
 // simulation for tests and the consistency lab. Production would plug in the
 // Raft-Consensus project as the state machine; here we preserve the semantics:
-//  - writes go to the leader
-//  - Apply is deterministic (no time.Now in Apply — timestamps in commands)
-//  - partition → minority rejects writes
-//  - linearizable reads via leader; stale reads anywhere with age header
+//   - writes go to the leader
+//   - Apply is deterministic (no time.Now in Apply — timestamps in commands)
+//   - partition → minority rejects writes
+//   - linearizable reads via leader; stale reads anywhere with age header
 package raft
 
 import (
@@ -35,12 +35,12 @@ const (
 // Command is a replicated log entry. Timestamps travel inside the command
 // so Apply stays deterministic.
 type Command struct {
-	Type      CommandType           `json:"type"`
-	Instance  *catalog.Instance     `json:"instance,omitempty"`
-	ID        string                `json:"id,omitempty"`
-	Health    catalog.HealthStatus  `json:"health,omitempty"`
-	Timestamp time.Time             `json:"timestamp"`
-	TraceID   string                `json:"trace_id,omitempty"`
+	Type      CommandType          `json:"type"`
+	Instance  *catalog.Instance    `json:"instance,omitempty"`
+	ID        string               `json:"id,omitempty"`
+	Health    catalog.HealthStatus `json:"health,omitempty"`
+	Timestamp time.Time            `json:"timestamp"`
+	TraceID   string               `json:"trace_id,omitempty"`
 }
 
 // Node is one Raft participant.

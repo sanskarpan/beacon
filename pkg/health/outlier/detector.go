@@ -58,8 +58,8 @@ type endpoint struct {
 	ejectedUntil   time.Time
 	errorRate      float64
 	// probation: after re-insert, require successes before full trust
-	probation      bool
-	probationOK    int
+	probation   bool
+	probationOK int
 }
 
 // New creates a detector.

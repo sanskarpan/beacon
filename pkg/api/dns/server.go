@@ -18,12 +18,11 @@ import (
 
 // Server answers discovery DNS queries.
 type Server struct {
-	store      store.CatalogStore
-	domain     string // default "beacon"
-	udp        *dns.Server
-	tcp        *dns.Server
+	store       store.CatalogStore
+	domain      string // default "beacon"
+	udp         *dns.Server
+	tcp         *dns.Server
 	passingOnly bool
-	mu         sync.Mutex
 }
 
 // Config for the DNS server.
@@ -211,17 +210,14 @@ func (s *Server) answer(m *dns.Msg, q dns.Question, name string) {
 				}
 			}
 		case dns.TypeSRV:
-			// priority 1, weight from instance
-			wt := uint16(inst.Weight)
-			if wt == 0 {
-				wt = 1
-			}
+			// priority 1, weight from instance (clamped to uint16 range)
+			wt := clampUint16(inst.Weight, 1)
 			target := dns.Fqdn(fmt.Sprintf("%s.node.%s", inst.Node, s.domain))
 			m.Answer = append(m.Answer, &dns.SRV{
 				Hdr:      dns.RR_Header{Name: q.Name, Rrtype: dns.TypeSRV, Class: dns.ClassINET, Ttl: ttl},
 				Priority: 1,
 				Weight:   wt,
-				Port:     uint16(inst.Port),
+				Port:     clampUint16(inst.Port, 0),
 				Target:   target,
 			})
 			// additional A for target
@@ -233,6 +229,17 @@ func (s *Server) answer(m *dns.Msg, q dns.Question, name string) {
 			}
 		}
 	}
+}
+
+// clampUint16 bounds an int into [0, 65535], falling back to fb when v <= 0.
+func clampUint16(v, fb int) uint16 {
+	if v <= 0 {
+		v = fb
+	}
+	if v > 0xFFFF {
+		v = 0xFFFF
+	}
+	return uint16(v) //nolint:gosec // G115: bounded above by construction
 }
 
 var shuffleMu sync.Mutex

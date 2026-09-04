@@ -47,8 +47,8 @@ type Store struct {
 	converge map[string]map[string]time.Time
 	self     string
 	// pending full-state digests for anti-entropy overflow
-	pendingFull bool
-	stopCh      chan struct{}
+	pendingFull  bool
+	stopCh       chan struct{}
 	membershipCh chan gossip.MemberEvent
 }
 
@@ -68,16 +68,16 @@ func New(cfg Config) *Store {
 		clk = clock.New()
 	}
 	s := &Store{
-		local:       cfg.Local,
-		membership:  cfg.Membership,
-		bus:         cfg.Bus,
-		watch:       cfg.Watch,
-		clk:         clk,
-		incarnation: make(map[string]uint64),
-		tombstones:  make(map[string]uint64),
-		converge:    make(map[string]map[string]time.Time),
-		self:        cfg.Membership.LocalName(),
-		stopCh:      make(chan struct{}),
+		local:        cfg.Local,
+		membership:   cfg.Membership,
+		bus:          cfg.Bus,
+		watch:        cfg.Watch,
+		clk:          clk,
+		incarnation:  make(map[string]uint64),
+		tombstones:   make(map[string]uint64),
+		converge:     make(map[string]map[string]time.Time),
+		self:         cfg.Membership.LocalName(),
+		stopCh:       make(chan struct{}),
 		membershipCh: make(chan gossip.MemberEvent, 64),
 	}
 	cfg.Membership.OnBroadcast(s.onBroadcast)

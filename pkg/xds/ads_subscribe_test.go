@@ -128,8 +128,8 @@ func TestADS_DynamicMidStreamSubscribeUnsubscribe(t *testing.T) {
 	// 2) Mid-stream: subscribe to "b" as well (dynamic add), then bump the
 	// catalog so the server pushes. Only a and b may appear.
 	if err := client.SendRequest(&xds.DiscoveryRequest{
-		NodeID:                "envoy-1",
-		TypeURL:               xds.TypeCluster,
+		NodeID:                 "envoy-1",
+		TypeURL:                xds.TypeCluster,
 		ResourceNamesSubscribe: []string{"b"},
 	}); err != nil {
 		t.Fatal(err)
@@ -156,8 +156,8 @@ func TestADS_DynamicMidStreamSubscribeUnsubscribe(t *testing.T) {
 	// 3) Mid-stream: unsubscribe "a" (dynamic remove), then bump the version
 	// again. "a" must NEVER appear after this point.
 	if err := client.SendRequest(&xds.DiscoveryRequest{
-		NodeID:                  "envoy-1",
-		TypeURL:                 xds.TypeCluster,
+		NodeID:                   "envoy-1",
+		TypeURL:                  xds.TypeCluster,
 		ResourceNamesUnsubscribe: []string{"a"},
 	}); err != nil {
 		t.Fatal(err)

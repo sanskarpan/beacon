@@ -131,7 +131,7 @@ func TestADS_OptionalRealEnvoy(t *testing.T) {
 	_, _ = fmt.Sscanf(portStr, "%d", &port)
 
 	dir := t.TempDir()
-	boot, err := xds.GenerateBootstrap(xds.BootstrapConfig{
+	_, err = xds.GenerateBootstrap(xds.BootstrapConfig{
 		NodeID: "envoy-live", ADSAddress: "127.0.0.1", ADSPort: mustAtoi(portStr), AdminPort: 0,
 	})
 	if err != nil {
@@ -141,11 +141,11 @@ func TestADS_OptionalRealEnvoy(t *testing.T) {
 	adminLis, _ := net.Listen("tcp", "127.0.0.1:0")
 	_, adminPortStr, _ := net.SplitHostPort(adminLis.Addr().String())
 	_ = adminLis.Close()
-	boot, _ = xds.GenerateBootstrap(xds.BootstrapConfig{
+	boot, _ := xds.GenerateBootstrap(xds.BootstrapConfig{
 		NodeID: "envoy-live", ADSAddress: "127.0.0.1", ADSPort: mustAtoi(portStr), AdminPort: mustAtoi(adminPortStr),
 	})
 	bootPath := filepath.Join(dir, "bootstrap.json")
-	if err := os.WriteFile(bootPath, boot, 0o644); err != nil {
+	if err := os.WriteFile(bootPath, boot, 0o600); err != nil {
 		t.Fatal(err)
 	}
 

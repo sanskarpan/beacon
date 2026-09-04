@@ -28,13 +28,13 @@ const (
 	EvLeaseGranted         Kind = "lease.granted"
 
 	// Health
-	EvCheckExecuted    Kind = "check.executed"
-	EvHealthChanged    Kind = "health.changed"
-	EvFlappingDetected Kind = "health.flapping"
-	EvOutlierEjected   Kind = "outlier.ejected"
-	EvOutlierReturned  Kind = "outlier.returned"
+	EvCheckExecuted      Kind = "check.executed"
+	EvHealthChanged      Kind = "health.changed"
+	EvFlappingDetected   Kind = "health.flapping"
+	EvOutlierEjected     Kind = "outlier.ejected"
+	EvOutlierReturned    Kind = "outlier.returned"
 	EvEjectionCapReached Kind = "outlier.ejection_cap"
-	EvPanicModeEntered Kind = "lb.panic_mode"
+	EvPanicModeEntered   Kind = "lb.panic_mode"
 
 	// Propagation
 	EvGossipDelta     Kind = "gossip.delta"

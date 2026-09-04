@@ -20,16 +20,16 @@ import (
 // ContrastResult compares the same registration workload with gossip on vs off
 // (anti-entropy / Merkle catch-up only). Exported for the console overlay (TODO-012).
 type ContrastResult struct {
-	GossipOnP50   time.Duration `json:"gossip_on_p50"`
-	GossipOnP99   time.Duration `json:"gossip_on_p99"`
-	GossipOffP50  time.Duration `json:"gossip_off_p50"`
-	GossipOffP99  time.Duration `json:"gossip_off_p99"`
-	SlowdownP50   float64       `json:"slowdown_p50"`
-	SlowdownP99   float64       `json:"slowdown_p99"`
-	Samples       int           `json:"samples"`
-	Nodes         int           `json:"nodes"`
-	AEInterval    time.Duration `json:"ae_interval"`
-	Note          string        `json:"note"`
+	GossipOnP50  time.Duration `json:"gossip_on_p50"`
+	GossipOnP99  time.Duration `json:"gossip_on_p99"`
+	GossipOffP50 time.Duration `json:"gossip_off_p50"`
+	GossipOffP99 time.Duration `json:"gossip_off_p99"`
+	SlowdownP50  float64       `json:"slowdown_p50"`
+	SlowdownP99  float64       `json:"slowdown_p99"`
+	Samples      int           `json:"samples"`
+	Nodes        int           `json:"nodes"`
+	AEInterval   time.Duration `json:"ae_interval"`
+	Note         string        `json:"note"`
 }
 
 const (
@@ -182,14 +182,14 @@ func WriteContrastJSON(dir string, c ContrastResult) error {
 	if dir == "" {
 		dir = "tmp/sim"
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "gossip_contrast.json"), b, 0o644)
+	return os.WriteFile(filepath.Join(dir, "gossip_contrast.json"), b, 0o600)
 }
 
 // ContrastMarkdown documents the slowdown factor.

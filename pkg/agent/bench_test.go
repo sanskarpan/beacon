@@ -11,10 +11,10 @@ import (
 	"github.com/sanskar/beacon/pkg/catalog"
 	"github.com/sanskar/beacon/pkg/clock"
 	"github.com/sanskar/beacon/pkg/events"
+	"github.com/sanskar/beacon/pkg/gossip"
 	"github.com/sanskar/beacon/pkg/health"
 	"github.com/sanskar/beacon/pkg/store"
 	gstore "github.com/sanskar/beacon/pkg/store/gossip"
-	"github.com/sanskar/beacon/pkg/gossip"
 )
 
 // TODO-038: Agent with 100 local services memory/CPU benchmark.
@@ -47,7 +47,7 @@ func TestAgent_100ServicesBenchmark(t *testing.T) {
 				{
 					ID: "alive", Type: catalog.CheckTCP,
 					TCP: "127.0.0.1:1", Timeout: 1 * time.Second,
-					Interval: 30 * time.Second,
+					Interval:               30 * time.Second,
 					FailuresBeforeCritical: 3,
 					SuccessesBeforePassing: 2,
 				},
@@ -103,7 +103,7 @@ func TestAgent_500ConcurrentHealthChecks(t *testing.T) {
 				{
 					ID: "alive", Type: catalog.CheckTCP,
 					TCP: "127.0.0.1:1", Timeout: 1 * time.Second,
-					Interval: 10 * time.Second,
+					Interval:               10 * time.Second,
 					FailuresBeforeCritical: 3,
 					SuccessesBeforePassing: 2,
 				},

@@ -51,3 +51,19 @@ node-1.node.beacon               A (node lookup)
 ```
 
 `dig @localhost -p 8600 payments.service.beacon SRV`
+
+## Production codegen path
+
+`pkg/api/pb/pb.go` is wire-compatible with `proto/beacon.proto` and served
+live by `grpcapi.ProtoServer` (`beacon-server --grpc :8502`). To move to
+generated stubs:
+
+```bash
+buf generate --template proto/buf.gen.yaml
+git diff --exit-code pkg/api/pb/
+go test ./pkg/api/grpcapi/ -run TestProtoWire -count=1
+```
+
+Contract changes require a `buf breaking` check in CI and an entry in
+`docs/API-CHANGELOG.md` (create on first breaking change). HTTP contract is
+pinned in `api/openapi.yaml`.

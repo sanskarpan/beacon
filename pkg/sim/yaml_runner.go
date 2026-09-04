@@ -26,18 +26,18 @@ type ScenarioFile struct {
 type ScenarioStep struct {
 	Action string `yaml:"action"` // propagate|partition|storm|flap|herd|cascade|rollout|zone-failure|assert
 	// parameters
-	Nodes      int    `yaml:"nodes"`
-	Instances  int    `yaml:"instances"`
-	Watchers   int    `yaml:"watchers"`
-	Endpoints  int    `yaml:"endpoints"`
-	Name       string `yaml:"name"` // for assert
-	OK         *bool  `yaml:"ok"`
-	Detail     string `yaml:"detail"`
+	Nodes     int    `yaml:"nodes"`
+	Instances int    `yaml:"instances"`
+	Watchers  int    `yaml:"watchers"`
+	Endpoints int    `yaml:"endpoints"`
+	Name      string `yaml:"name"` // for assert
+	OK        *bool  `yaml:"ok"`
+	Detail    string `yaml:"detail"`
 }
 
 // LoadScenarioYAML reads a scenario file.
 func LoadScenarioYAML(path string) (*ScenarioFile, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304: path is the operator-supplied scenario file argument, not remote input
 	if err != nil {
 		return nil, err
 	}
@@ -177,17 +177,19 @@ func (r *Runner) Rollout(instances int) Result {
 	res.Metrics["risk_ticks"] = riskTicks
 	res.Metrics["total_ticks"] = totalTicks
 	res.Metrics["max_unavailable"] = 1
-	res.Assertions = append(res.Assertions, AssertResult{
-		Name:   "rolling_max_unavailable_one",
-		OK:     true,
-		Detail: fmt.Sprintf("risk_ticks=%d", riskTicks),
-	})
 	// With maxUnavailable=1, never go below (n-1)/n healthy
-	res.Assertions = append(res.Assertions, AssertResult{
-		Name:   "never_below_n_minus_1",
-		OK:     riskTicks == 0 || instances <= 2,
-		Detail: fmt.Sprintf("healthy floor maintained for n=%d", instances),
-	})
+	res.Assertions = append(res.Assertions,
+		AssertResult{
+			Name:   "rolling_max_unavailable_one",
+			OK:     true,
+			Detail: fmt.Sprintf("risk_ticks=%d", riskTicks),
+		},
+		AssertResult{
+			Name:   "never_below_n_minus_1",
+			OK:     riskTicks == 0 || instances <= 2,
+			Detail: fmt.Sprintf("healthy floor maintained for n=%d", instances),
+		},
+	)
 	res.OK = allOK(res.Assertions)
 	return res
 }
@@ -200,9 +202,8 @@ func (r *Runner) ZoneFailure() Result {
 	overprov := 1.4
 	var weights []float64
 	for h := 100; h >= 0; h -= 10 {
-		w := minF(100, float64(h)*100/overprov/100*100) // simplify
-		// healthyPercent * 100 / overprovision
-		w = minF(100, float64(h)/overprov)
+		// Envoy formula: overflow weight degrades gradually with healthyPercent / overprovision.
+		w := minF(100, float64(h)/overprov)
 		weights = append(weights, w)
 	}
 	// Gradual: consecutive steps should not jump by full 100 unless at edges

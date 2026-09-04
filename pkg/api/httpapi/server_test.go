@@ -39,9 +39,8 @@ func TestHTTPLifecycle(t *testing.T) {
 	if len(insts) != 1 {
 		t.Fatalf("want 1 got %d", len(insts))
 	}
-	if resp.Header.Get("X-Beacon-Index") == "" && true {
-		// index header set on blocking path; non-blocking still ok
-	}
+	// index header is set on the blocking path; empty here is fine for non-blocking reads.
+	_ = resp.Header.Get("X-Beacon-Index")
 
 	req, _ = http.NewRequest(http.MethodPut, ts.URL+"/v1/agent/service/deregister/h1", nil)
 	resp, _ = http.DefaultClient.Do(req)

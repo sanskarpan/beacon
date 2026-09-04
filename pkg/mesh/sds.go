@@ -10,12 +10,12 @@ import (
 
 // SDSResource is a secret pushed over ADS (SDS).
 type SDSResource struct {
-	Name        string
-	CertChain   []byte
-	PrivateKey  []byte
-	CABundle    []byte
-	Version     string
-	NotAfter    time.Time
+	Name       string
+	CertChain  []byte
+	PrivateKey []byte
+	CABundle   []byte
+	Version    string
+	NotAfter   time.Time
 }
 
 // SDS serves secrets for workloads, rotating at 50% of leaf lifetime.
@@ -36,25 +36,35 @@ func NewSDS(ca *CA, clk clock.Clock) *SDS {
 }
 
 // Fetch returns (and optionally rotates) the secret for a SPIFFE identity.
+// Signing happens outside the cache lock so concurrent Fetch calls for
+// different identities do not serialize on x509 creation.
 func (s *SDS) Fetch(workload string, id Identity) (*SDSResource, error) {
 	uri := id.URI()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	cert, ok := s.certs[uri]
 	now := s.clk.Now()
-	if !ok || ShouldRotate(cert, now) {
+	needsSign := !ok || ShouldRotate(cert, now)
+	s.mu.Unlock()
+	if needsSign {
 		c, err := s.ca.Sign(workload, id)
 		if err != nil {
 			return nil, err
 		}
-		cert = c
-		s.certs[uri] = cert
+		s.mu.Lock()
+		if cur, ok := s.certs[uri]; !ok || ShouldRotate(cur, s.clk.Now()) {
+			s.certs[uri] = c
+			cert = c
+		} else {
+			cert = cur
+		}
+		s.mu.Unlock()
 	}
+	bundle := s.ca.Bundle()
 	return &SDSResource{
 		Name:       uri,
 		CertChain:  cert.CertPEM,
 		PrivateKey: cert.KeyPEM,
-		CABundle:   s.ca.Bundle(),
+		CABundle:   bundle,
 		Version:    fmt.Sprintf("%d", cert.NotAfter.Unix()),
 		NotAfter:   cert.NotAfter,
 	}, nil

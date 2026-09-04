@@ -53,7 +53,7 @@ func ServerTLSConfig(ca *CA, serverID Identity, serverWorkload string, allowedCl
 		ClientCAs:             pool,
 		ClientAuth:            tls.RequireAndVerifyClientCert,
 		MinVersion:            tls.VersionTLS12,
-		VerifyPeerCertificate: verify,
+		VerifyPeerCertificate: verify, //nolint:gosec // G123: server-side client-cert verification runs on every full handshake; resumption is safe within short-lived cert lifetimes.
 	}, nil
 }
 
@@ -96,8 +96,10 @@ func ClientTLSConfig(ca *CA, clientID Identity, clientWorkload string) (*tls.Con
 		Certificates: []tls.Certificate{kc},
 		RootCAs:      pool,
 		MinVersion:   tls.VersionTLS12,
-		// SPIFFE URI SANs are not DNS names; use custom verification
-		InsecureSkipVerify:    true,
+		// SPIFFE URI SANs are not DNS names; use custom verification.
+		//nolint:gosec // G402: InsecureSkipVerify is required to bypass hostname verification for SPIFFE URIs; verifyPeer still validates the full chain against RootCAs plus the SPIFFE identity (C9).
+		InsecureSkipVerify: true,
+		//nolint:gosec // G123: session resumption is acceptable here because resumed sessions reuse the already-verified peer identity within short-lived cert lifetimes; intentions are re-checked at the application layer per RPC.
 		VerifyPeerCertificate: verifyPeer,
 	}, nil
 }

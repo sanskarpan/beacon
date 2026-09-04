@@ -144,6 +144,8 @@ Key properties under test:
 
 ## Docs
 
+Published site: **https://sanskarpan.github.io/beacon/** (MkDocs, `mkdocs.yml`, `pages.yml`).
+
 - [ARCHITECTURE](docs/ARCHITECTURE.md)
 - [CONSISTENCY](docs/CONSISTENCY.md)
 - [HEALTH](docs/HEALTH.md)
@@ -152,6 +154,21 @@ Key properties under test:
 - [XDS](docs/XDS.md)
 - [INTEGRATION](docs/INTEGRATION.md)
 - [ANTI_ENTROPY](docs/ANTI_ENTROPY.md)
+- [SLOs](docs/SLO.md) · [Disaster Recovery](docs/DISASTER-RECOVERY.md) · [Runbooks](docs/runbooks/RUNBOOK.md) · [ADRs](docs/adr/0001-ap-vs-cp.md)
+
+## Production
+
+- Releases: SemVer tags `vX.Y.Z` via GoReleaser (`release.yml`) — binaries +
+  container images `ghcr.io/sanskarpan/beacon` + SBOM + cosign signatures.
+- Deploy: `docker-compose.yml` (local 3-node) or `deploy/k8s/beacon.yaml`
+  (StatefulSet 3 + PDB + HPA + NetworkPolicy). Alerts in
+  `deploy/prometheus/rules.yml` per `docs/SLO.md`.
+- Security: `SECURITY.md` (threat model, disclosure SLA); CodeQL + Scorecard
+  run weekly; production CA must use `mesh.NewCAProduction` (fail-closed
+  entitlements) with explicit `Entitle` per workload.
+- API contract: `api/openapi.yaml` (HTTP) + `proto/beacon.proto` (gRPC/xDS).
+- Governance: `GOVERNANCE.md`, `MAINTAINERS.md`, `SUPPORT.md`, `ROADMAP.md`;
+  audit trail in `docs/PRODUCTION_AUDIT_2026_09_04.md`.
 
 ## Configuration
 

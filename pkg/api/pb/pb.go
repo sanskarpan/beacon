@@ -23,49 +23,166 @@ type Instance struct {
 	Zone    string            `json:"zone"`
 }
 
-func (m *Instance) GetId() string                  { if m != nil { return m.Id }; return "" }
-func (m *Instance) GetService() string             { if m != nil { return m.Service }; return "" }
-func (m *Instance) GetNode() string                { if m != nil { return m.Node }; return "" }
-func (m *Instance) GetAddress() string             { if m != nil { return m.Address }; return "" }
-func (m *Instance) GetPort() int32                 { if m != nil { return m.Port }; return 0 }
-func (m *Instance) GetTags() []string              { if m != nil { return m.Tags }; return nil }
-func (m *Instance) GetMeta() map[string]string     { if m != nil { return m.Meta }; return nil }
-func (m *Instance) GetWeight() int32               { if m != nil { return m.Weight }; return 0 }
-func (m *Instance) GetHealth() string              { if m != nil { return m.Health }; return "" }
-func (m *Instance) GetRegion() string              { if m != nil { return m.Region }; return "" }
-func (m *Instance) GetZone() string                { if m != nil { return m.Zone }; return "" }
+func (m *Instance) GetId() string {
+	if m != nil {
+		return m.Id
+	}
+	return ""
+}
+func (m *Instance) GetService() string {
+	if m != nil {
+		return m.Service
+	}
+	return ""
+}
+func (m *Instance) GetNode() string {
+	if m != nil {
+		return m.Node
+	}
+	return ""
+}
+func (m *Instance) GetAddress() string {
+	if m != nil {
+		return m.Address
+	}
+	return ""
+}
+func (m *Instance) GetPort() int32 {
+	if m != nil {
+		return m.Port
+	}
+	return 0
+}
+func (m *Instance) GetTags() []string {
+	if m != nil {
+		return m.Tags
+	}
+	return nil
+}
+func (m *Instance) GetMeta() map[string]string {
+	if m != nil {
+		return m.Meta
+	}
+	return nil
+}
+func (m *Instance) GetWeight() int32 {
+	if m != nil {
+		return m.Weight
+	}
+	return 0
+}
+func (m *Instance) GetHealth() string {
+	if m != nil {
+		return m.Health
+	}
+	return ""
+}
+func (m *Instance) GetRegion() string {
+	if m != nil {
+		return m.Region
+	}
+	return ""
+}
+func (m *Instance) GetZone() string {
+	if m != nil {
+		return m.Zone
+	}
+	return ""
+}
 
-type RegisterRequest struct{ Instance *Instance `json:"instance"` }
-func (m *RegisterRequest) GetInstance() *Instance { if m != nil { return m.Instance }; return nil }
+type RegisterRequest struct {
+	Instance *Instance `json:"instance"`
+}
 
-type RegisterResponse struct{ Index uint64 `json:"index"` }
-func (m *RegisterResponse) GetIndex() uint64 { if m != nil { return m.Index }; return 0 }
+func (m *RegisterRequest) GetInstance() *Instance {
+	if m != nil {
+		return m.Instance
+	}
+	return nil
+}
 
-type DeregisterRequest struct{ Id string `json:"id"` }
-func (m *DeregisterRequest) GetId() string { if m != nil { return m.Id }; return "" }
+type RegisterResponse struct {
+	Index uint64 `json:"index"`
+}
+
+func (m *RegisterResponse) GetIndex() uint64 {
+	if m != nil {
+		return m.Index
+	}
+	return 0
+}
+
+type DeregisterRequest struct {
+	Id string `json:"id"`
+}
+
+func (m *DeregisterRequest) GetId() string {
+	if m != nil {
+		return m.Id
+	}
+	return ""
+}
 
 type ResolveRequest struct {
 	Service string `json:"service"`
 	Passing bool   `json:"passing"`
 }
-func (m *ResolveRequest) GetService() string { if m != nil { return m.Service }; return "" }
-func (m *ResolveRequest) GetPassing() bool   { if m != nil { return m.Passing }; return false }
+
+func (m *ResolveRequest) GetService() string {
+	if m != nil {
+		return m.Service
+	}
+	return ""
+}
+func (m *ResolveRequest) GetPassing() bool {
+	if m != nil {
+		return m.Passing
+	}
+	return false
+}
 
 type ResolveResponse struct {
 	Instances []*Instance `json:"instances"`
 	Index     uint64      `json:"index"`
 }
-func (m *ResolveResponse) GetInstances() []*Instance { if m != nil { return m.Instances }; return nil }
-func (m *ResolveResponse) GetIndex() uint64          { if m != nil { return m.Index }; return 0 }
+
+func (m *ResolveResponse) GetInstances() []*Instance {
+	if m != nil {
+		return m.Instances
+	}
+	return nil
+}
+func (m *ResolveResponse) GetIndex() uint64 {
+	if m != nil {
+		return m.Index
+	}
+	return 0
+}
 
 type WatchRequest struct {
 	Service   string `json:"service"`
 	FromIndex uint64 `json:"from_index"`
 	Passing   bool   `json:"passing"`
 }
-func (m *WatchRequest) GetService() string   { if m != nil { return m.Service }; return "" }
-func (m *WatchRequest) GetFromIndex() uint64 { if m != nil { return m.FromIndex }; return 0 }
-func (m *WatchRequest) GetPassing() bool     { if m != nil { return m.Passing }; return false }
+
+func (m *WatchRequest) GetService() string {
+	if m != nil {
+		return m.Service
+	}
+	return ""
+}
+func (m *WatchRequest) GetFromIndex() uint64 {
+	if m != nil {
+		return m.FromIndex
+	}
+	return 0
+}
+func (m *WatchRequest) GetPassing() bool {
+	if m != nil {
+		return m.Passing
+	}
+	return false
+}
 
 type WatchEvent struct {
 	Kind      string      `json:"kind"`
@@ -73,19 +190,56 @@ type WatchEvent struct {
 	Instances []*Instance `json:"instances"`
 	Index     uint64      `json:"index"`
 }
-func (m *WatchEvent) GetKind() string            { if m != nil { return m.Kind }; return "" }
-func (m *WatchEvent) GetService() string         { if m != nil { return m.Service }; return "" }
-func (m *WatchEvent) GetInstances() []*Instance  { if m != nil { return m.Instances }; return nil }
-func (m *WatchEvent) GetIndex() uint64           { if m != nil { return m.Index }; return 0 }
+
+func (m *WatchEvent) GetKind() string {
+	if m != nil {
+		return m.Kind
+	}
+	return ""
+}
+func (m *WatchEvent) GetService() string {
+	if m != nil {
+		return m.Service
+	}
+	return ""
+}
+func (m *WatchEvent) GetInstances() []*Instance {
+	if m != nil {
+		return m.Instances
+	}
+	return nil
+}
+func (m *WatchEvent) GetIndex() uint64 {
+	if m != nil {
+		return m.Index
+	}
+	return 0
+}
 
 type WatchMultiRequest struct {
 	Op        string `json:"op"`
 	Service   string `json:"service"`
 	FromIndex uint64 `json:"from_index"`
 }
-func (m *WatchMultiRequest) GetOp() string        { if m != nil { return m.Op }; return "" }
-func (m *WatchMultiRequest) GetService() string   { if m != nil { return m.Service }; return "" }
-func (m *WatchMultiRequest) GetFromIndex() uint64 { if m != nil { return m.FromIndex }; return 0 }
+
+func (m *WatchMultiRequest) GetOp() string {
+	if m != nil {
+		return m.Op
+	}
+	return ""
+}
+func (m *WatchMultiRequest) GetService() string {
+	if m != nil {
+		return m.Service
+	}
+	return ""
+}
+func (m *WatchMultiRequest) GetFromIndex() uint64 {
+	if m != nil {
+		return m.FromIndex
+	}
+	return 0
+}
 
 // Service interfaces
 
@@ -168,8 +322,12 @@ var _Discovery_serviceDesc = grpc.ServiceDesc{
 
 func _Discovery_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegisterRequest)
-	if err := dec(in); err != nil { return nil, err }
-	if interceptor == nil { return srv.(DiscoveryServer).Register(ctx, in) }
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DiscoveryServer).Register(ctx, in)
+	}
 	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/beacon.v1.Discovery/Register"}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DiscoveryServer).Register(ctx, req.(*RegisterRequest))
@@ -178,8 +336,12 @@ func _Discovery_Register_Handler(srv interface{}, ctx context.Context, dec func(
 }
 func _Discovery_Deregister_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeregisterRequest)
-	if err := dec(in); err != nil { return nil, err }
-	if interceptor == nil { return srv.(DiscoveryServer).Deregister(ctx, in) }
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DiscoveryServer).Deregister(ctx, in)
+	}
 	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/beacon.v1.Discovery/Deregister"}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DiscoveryServer).Deregister(ctx, req.(*DeregisterRequest))
@@ -188,8 +350,12 @@ func _Discovery_Deregister_Handler(srv interface{}, ctx context.Context, dec fun
 }
 func _Discovery_Resolve_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ResolveRequest)
-	if err := dec(in); err != nil { return nil, err }
-	if interceptor == nil { return srv.(DiscoveryServer).Resolve(ctx, in) }
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DiscoveryServer).Resolve(ctx, in)
+	}
 	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/beacon.v1.Discovery/Resolve"}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DiscoveryServer).Resolve(ctx, req.(*ResolveRequest))
@@ -198,7 +364,9 @@ func _Discovery_Resolve_Handler(srv interface{}, ctx context.Context, dec func(i
 }
 func _Discovery_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(WatchRequest)
-	if err := stream.RecvMsg(m); err != nil { return err }
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
 	return srv.(DiscoveryServer).Watch(m, &discoveryWatchServer{ServerStream: stream})
 }
 func _Discovery_WatchMulti_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -206,13 +374,17 @@ func _Discovery_WatchMulti_Handler(srv interface{}, stream grpc.ServerStream) er
 }
 
 type discoveryWatchServer struct{ grpc.ServerStream }
-func (x *discoveryWatchServer) Send(m *WatchEvent) error { return x.ServerStream.SendMsg(m) }
+
+func (x *discoveryWatchServer) Send(m *WatchEvent) error { return x.SendMsg(m) }
 
 type discoveryWatchMultiServer struct{ grpc.ServerStream }
-func (x *discoveryWatchMultiServer) Send(m *WatchEvent) error { return x.ServerStream.SendMsg(m) }
+
+func (x *discoveryWatchMultiServer) Send(m *WatchEvent) error { return x.SendMsg(m) }
 func (x *discoveryWatchMultiServer) Recv() (*WatchMultiRequest, error) {
 	m := new(WatchMultiRequest)
-	if err := x.ServerStream.RecvMsg(m); err != nil { return nil, err }
+	if err := x.RecvMsg(m); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -224,45 +396,68 @@ func NewDiscoveryClient(cc grpc.ClientConnInterface) DiscoveryClient { return &d
 func (c *discoveryClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
 	out := new(RegisterResponse)
 	err := c.cc.Invoke(ctx, "/beacon.v1.Discovery/Register", in, out, opts...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 func (c *discoveryClient) Deregister(ctx context.Context, in *DeregisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
 	out := new(RegisterResponse)
 	err := c.cc.Invoke(ctx, "/beacon.v1.Discovery/Deregister", in, out, opts...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 func (c *discoveryClient) Resolve(ctx context.Context, in *ResolveRequest, opts ...grpc.CallOption) (*ResolveResponse, error) {
 	out := new(ResolveResponse)
 	err := c.cc.Invoke(ctx, "/beacon.v1.Discovery/Resolve", in, out, opts...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 func (c *discoveryClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Discovery_WatchClient, error) {
 	stream, err := c.cc.NewStream(ctx, &_Discovery_serviceDesc.Streams[0], "/beacon.v1.Discovery/Watch", opts...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	x := &discoveryWatchClient{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil { return nil, err }
-	if err := x.ClientStream.CloseSend(); err != nil { return nil, err }
+	if err := x.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.CloseSend(); err != nil {
+		return nil, err
+	}
 	return x, nil
 }
 func (c *discoveryClient) WatchMulti(ctx context.Context, opts ...grpc.CallOption) (Discovery_WatchMultiClient, error) {
 	stream, err := c.cc.NewStream(ctx, &_Discovery_serviceDesc.Streams[1], "/beacon.v1.Discovery/WatchMulti", opts...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return &discoveryWatchMultiClient{ClientStream: stream}, nil
 }
 
 type discoveryWatchClient struct{ grpc.ClientStream }
+
 func (x *discoveryWatchClient) Recv() (*WatchEvent, error) {
 	m := new(WatchEvent)
-	if err := x.ClientStream.RecvMsg(m); err != nil { return nil, err }
+	if err := x.RecvMsg(m); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
+
 type discoveryWatchMultiClient struct{ grpc.ClientStream }
-func (x *discoveryWatchMultiClient) Send(m *WatchMultiRequest) error { return x.ClientStream.SendMsg(m) }
+
+func (x *discoveryWatchMultiClient) Send(m *WatchMultiRequest) error {
+	return x.SendMsg(m)
+}
 func (x *discoveryWatchMultiClient) Recv() (*WatchEvent, error) {
 	m := new(WatchEvent)
-	if err := x.ClientStream.RecvMsg(m); err != nil { return nil, err }
+	if err := x.RecvMsg(m); err != nil {
+		return nil, err
+	}
 	return m, nil
 }

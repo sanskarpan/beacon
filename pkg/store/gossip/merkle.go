@@ -88,16 +88,11 @@ func (s *Store) BuildDigest(includeLeaves bool) Digest {
 		h := sha256.New()
 		h.Write([]byte(root))
 		for _, k := range keys {
-			h.Write([]byte(fmt.Sprintf("|tomb:%s:%d", k, tombCopy[k])))
+			_, _ = fmt.Fprintf(h, "|tomb:%s:%d", k, tombCopy[k])
 		}
 		d.Root = hex.EncodeToString(h.Sum(nil))
 	}
 	return d
-}
-
-func hashLeaf(l InstanceLeaf) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", l.ID, l.Incarnation, l.Health)))
-	return hex.EncodeToString(h[:])
 }
 
 func hashInstance(inst *catalog.Instance, inc uint64) string {

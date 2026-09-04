@@ -1,0 +1,8 @@
+* @sanskarpan
+pkg/mesh/ @sanskarpan
+pkg/xds/ @sanskarpan
+pkg/store/raft/ @sanskarpan
+docs/ @sanskarpan
+console/ @sanskarpan
+.github/ @sanskarpan
+deploy/ @sanskarpan

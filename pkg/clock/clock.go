@@ -60,14 +60,14 @@ func (Real) AfterFunc(d time.Duration, f func()) Timer {
 
 type realTicker struct{ t *time.Ticker }
 
-func (r *realTicker) C() <-chan time.Time  { return r.t.C }
-func (r *realTicker) Stop()                { r.t.Stop() }
+func (r *realTicker) C() <-chan time.Time   { return r.t.C }
+func (r *realTicker) Stop()                 { r.t.Stop() }
 func (r *realTicker) Reset(d time.Duration) { r.t.Reset(d) }
 
 type realTimer struct{ t *time.Timer }
 
-func (r *realTimer) C() <-chan time.Time       { return r.t.C }
-func (r *realTimer) Stop() bool                { return r.t.Stop() }
+func (r *realTimer) C() <-chan time.Time        { return r.t.C }
+func (r *realTimer) Stop() bool                 { return r.t.Stop() }
 func (r *realTimer) Reset(d time.Duration) bool { return r.t.Reset(d) }
 
 // ---------------------------------------------------------------------------
@@ -76,11 +76,10 @@ func (r *realTimer) Reset(d time.Duration) bool { return r.t.Reset(d) }
 
 // Virtual is a manually advanced clock with a heap of scheduled wakeups.
 type Virtual struct {
-	mu      sync.Mutex
-	now     time.Time
-	seq     uint64
-	timers  []*vEntry
-	waiting []chan struct{} // waiters for Advance
+	mu     sync.Mutex
+	now    time.Time
+	seq    uint64
+	timers []*vEntry
 }
 
 type vEntry struct {

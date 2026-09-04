@@ -22,5 +22,5 @@ func (a *AliasCheck) Run(ctx context.Context) (catalog.HealthStatus, string, err
 		return catalog.HealthCritical, "no alias lookup", nil
 	}
 	st := a.Lookup(a.Service)
-	return st, "alias:"+a.Service, nil
+	return st, "alias:" + a.Service, nil
 }

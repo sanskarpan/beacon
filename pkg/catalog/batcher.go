@@ -13,15 +13,14 @@ import (
 // Coalescing within 50 ms turns that into ~20 bumps. The index stays monotonic;
 // watchers still converge to the final state without observing every intermediate.
 type IndexBatcher struct {
-	clock  clock.Clock
-	window time.Duration
-	mu     sync.Mutex
+	clock   clock.Clock
+	window  time.Duration
+	mu      sync.Mutex
 	pending map[string]struct{}
-	timer  clock.Timer
-	flush  func(services []string, index uint64)
+	timer   clock.Timer
+	flush   func(services []string, index uint64)
 	// lastIndex is the highest index seen during the window
 	lastIndex uint64
-	indexFn   func() uint64
 }
 
 // NewIndexBatcher creates a batcher. flush is invoked with the set of touched

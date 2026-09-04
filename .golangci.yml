@@ -13,6 +13,26 @@ linters:
     - unused
     - importas
     - bodyclose
+    - gosec
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # Virtual clock and sim helpers legitimately use time.Sleep for goroutine scheduling.
+      - path: pkg/sim/
+        linters: [govet]
+        text: time.Sleep
+      # Test helpers skip error-check/bodyclose/gosec strictness (shipped
+      # code stays strict; races still caught by go test -race).
+      - path: _test\.go
+        linters: [errcheck, bodyclose, gosec]
+      # Test-only harness under test/ (not a _test.go file).
+      - path: test/integration/harness\.go
+        linters: [errcheck]
+      - path: pkg/api/pb/pb.go
+        linters: [revive, staticcheck]
   settings:
     gocritic:
       enabled-tags:
@@ -20,21 +40,17 @@ linters:
         - performance
       disabled-checks:
         - hugeParam  # catalog.Instance is large but cloned at boundaries
-issues:
-  exclude-rules:
-    # Virtual clock and sim helpers legitimately use time.Sleep for goroutine scheduling.
-    - path: pkg/sim/
-      linters:
-        - govet
-      text: "time.Sleep"
-    # Test files may use bare timers for test infrastructure.
-    - path: _test\.go
-      linters:
-        - errcheck
-    - path: pkg/api/pb/pb.go
-      linters:
-        - revive
-        - staticcheck
+        - rangeValCopy  # catalog/resolver copies are defensive (see C1 race fix); aliasing would reintroduce mutation bugs
+    gosec:
+      # G107: CLI intentionally dials a user-supplied --server address.
+      # G204: health exec tests intentionally run fixture scripts.
+      # G404: math/rand is the correct choice for jitter/simulation
+      #   (virtual-clock determinism); security randomness (trace IDs,
+      #   keys) already uses crypto/rand.
+      excludes:
+        - G107
+        - G204
+        - G404
 formatters:
   enable:
     - gofmt

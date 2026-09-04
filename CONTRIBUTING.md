@@ -54,3 +54,9 @@ gosec ./...
 ## DCO
 
 All commits must be signed off (`git commit -s`). By contributing you agree to the [Developer Certificate of Origin](https://developercertificate.org/).
+
+## Releases
+
+Releases are cut from `main` by tagging `vX.Y.Z` (SemVer, Keep-a-Changelog).
+`release.yml` builds binaries + images, attaches SBOM, and cosign-signs.
+Update `CHANGELOG.md` under `[Unreleased]` with every user-facing change.

@@ -137,11 +137,6 @@ func TestSDS_UnauthorizedIdentityRejectedOverADS(t *testing.T) {
 	}
 }
 
-func netListen(t *testing.T) (net.Listener, error) {
-	t.Helper()
-	return net.Listen("tcp", "127.0.0.1:0")
-}
-
 func dialTo(t *testing.T, addr string) *xds.LiveClient {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,9 +46,9 @@ type Picker interface {
 
 // RoundRobin cycles with an atomic counter.
 type RoundRobin struct {
-	mu   sync.RWMutex
-	eps  []*Endpoint
-	idx  atomic.Uint64
+	mu  sync.RWMutex
+	eps []*Endpoint
+	idx atomic.Uint64
 }
 
 func NewRoundRobin(eps []*Endpoint) *RoundRobin {
@@ -253,10 +254,10 @@ func (p *P2C) done(ep *Endpoint) func(DoneInfo) {
 
 // RingHash provides session affinity via consistent hashing with virtual nodes.
 type RingHash struct {
-	mu      sync.RWMutex
-	eps     []*Endpoint
-	ring    []ringNode
-	vnodes  int
+	mu     sync.RWMutex
+	eps    []*Endpoint
+	ring   []ringNode
+	vnodes int
 }
 
 type ringNode struct {
@@ -284,14 +285,8 @@ func (r *RingHash) Update(eps []*Endpoint) {
 			r.ring = append(r.ring, ringNode{hash: h, ep: ep})
 		}
 	}
-	// sort ring
-	for i := 0; i < len(r.ring); i++ {
-		for j := i + 1; j < len(r.ring); j++ {
-			if r.ring[j].hash < r.ring[i].hash {
-				r.ring[i], r.ring[j] = r.ring[j], r.ring[i]
-			}
-		}
-	}
+	// sort ring by hash for consistent lookup
+	sort.Slice(r.ring, func(i, j int) bool { return r.ring[i].hash < r.ring[j].hash })
 }
 func (r *RingHash) Pick(info PickInfo) (*Endpoint, func(DoneInfo), error) {
 	r.mu.RLock()

@@ -1,0 +1,21 @@
+groups:
+  - name: beacon
+    interval: 30s
+    rules:
+      - alert: StaleWindowP99High
+        expr: histogram_quantile(0.99, beacon_propagation_seconds_bucket) > 3
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "gossip+streaming p99 stale window > 3s" }
+      - alert: WatchWakeP99High
+        expr: histogram_quantile(0.99, beacon_watch_wake_seconds_bucket) > 0.02
+        for: 10m
+        labels: { severity: ticket }
+      - alert: XDSNACKRatioHigh
+        expr: rate(beacon_xds_nack_total[1h]) / clamp_min(rate(beacon_xds_push_total[1h]), 1) > 0.001
+        for: 15m
+        labels: { severity: ticket }
+      - alert: DNSP99High
+        expr: histogram_quantile(0.99, beacon_dns_seconds_bucket) > 0.005
+        for: 10m
+        labels: { severity: ticket }

@@ -19,7 +19,7 @@ func NewID() string {
 		// fallback to time-based entropy on crypto failure
 		now := time.Now().UnixNano()
 		for i := range b {
-			b[i] = byte(now >> (i * 8))
+			b[i] = byte(now >> (i * 8)) //nolint:gosec // G115: deliberate low-byte extraction
 		}
 	}
 	n := counter.Add(1)
@@ -32,7 +32,7 @@ func NewIDAt(t time.Time) string {
 	if _, err := rand.Read(b[:]); err != nil {
 		v := t.UnixNano()
 		for i := range b {
-			b[i] = byte(v >> (i * 8))
+			b[i] = byte(v >> (i * 8)) //nolint:gosec // G115: deliberate low-byte extraction
 		}
 	}
 	n := counter.Add(1)

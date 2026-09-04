@@ -15,15 +15,14 @@ import (
 // LeaseManager grants, renews, and expires leases using a single timer heap.
 // 10,000 leases must not be 10,000 goroutines.
 type LeaseManager struct {
-	mu      sync.Mutex
-	clk     clock.Clock
-	store   *Store
-	bus     *events.Bus
-	leases  map[string]*leaseEntry // by lease ID
-	byInst  map[string]string      // instance ID → lease ID
-	pq      leaseHeap
-	timer   clock.Timer
-	stopped bool
+	mu     sync.Mutex
+	clk    clock.Clock
+	store  *Store
+	bus    *events.Bus
+	leases map[string]*leaseEntry // by lease ID
+	byInst map[string]string      // instance ID → lease ID
+	pq     leaseHeap
+	timer  clock.Timer
 	// Grace period after expiry during which a renewal restores the instance.
 	grace time.Duration
 	// Default deregister delay after critical-on-expiry.
@@ -31,10 +30,10 @@ type LeaseManager struct {
 }
 
 type leaseEntry struct {
-	lease     Lease
-	critical  bool // true once expired but not yet removed
-	removeAt  time.Time
-	heapIdx   int
+	lease    Lease
+	critical bool // true once expired but not yet removed
+	removeAt time.Time
+	heapIdx  int
 	// nextAction is when we next need to wake (expiry or removal)
 	nextAction time.Time
 }

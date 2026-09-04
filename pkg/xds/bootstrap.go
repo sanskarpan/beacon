@@ -9,11 +9,11 @@ import (
 
 // BootstrapConfig is a minimal Envoy bootstrap for connecting to beacon ADS.
 type BootstrapConfig struct {
-	NodeID      string `json:"node_id"`
-	Cluster     string `json:"cluster"`
-	ADSAddress  string `json:"ads_address"` // host:port of beacon xDS
-	ADSPort     int    `json:"ads_port"`
-	AdminPort   int    `json:"admin_port"`
+	NodeID     string `json:"node_id"`
+	Cluster    string `json:"cluster"`
+	ADSAddress string `json:"ads_address"` // host:port of beacon xDS
+	ADSPort    int    `json:"ads_port"`
+	AdminPort  int    `json:"admin_port"`
 }
 
 // GenerateBootstrap returns Envoy bootstrap JSON (static_resources + dynamic ADS).
@@ -64,9 +64,9 @@ func GenerateBootstrap(cfg BootstrapConfig) ([]byte, error) {
 		"static_resources": map[string]any{
 			"clusters": []any{
 				map[string]any{
-					"name":            "beacon_ads",
-					"type":            "STATIC",
-					"connect_timeout": "1s",
+					"name":                   "beacon_ads",
+					"type":                   "STATIC",
+					"connect_timeout":        "1s",
 					"http2_protocol_options": map[string]any{},
 					"load_assignment": map[string]any{
 						"cluster_name": "beacon_ads",
@@ -146,7 +146,7 @@ func RBACFilter(rules []RBACRule) map[string]any {
 	return map[string]any{
 		"name": "envoy.filters.network.rbac",
 		"typed_config": map[string]any{
-			"@type":    "type.googleapis.com/envoy.extensions.filters.network.rbac.v3.RBAC",
+			"@type":       "type.googleapis.com/envoy.extensions.filters.network.rbac.v3.RBAC",
 			"stat_prefix": "rbac",
 			"rules": map[string]any{
 				"action":   "ALLOW",

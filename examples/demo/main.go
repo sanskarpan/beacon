@@ -42,7 +42,7 @@ func main() {
 		_, err := client.Register(ctx, &catalog.Instance{
 			ID: s.id, Service: s.name, Node: "demo", Address: "127.0.0.1", Port: s.port,
 			Health: catalog.HealthPassing, Weight: 1,
-			Tags: []string{"demo", "v1"},
+			Tags:     []string{"demo", "v1"},
 			Locality: catalog.Locality{Region: "local", Zone: "z1"},
 			Lease:    &catalog.Lease{TTL: 30 * time.Second},
 		})
@@ -58,27 +58,27 @@ func main() {
 		// web → api
 		insts, err := client.Resolve(r.Context(), "api", catalog.QueryOptions{Passing: true})
 		if err != nil || len(insts) == 0 {
-			http.Error(w, "api unavailable", 503)
+			http.Error(w, "api unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		fmt.Fprintf(w, "web → api@%s → ok\n", insts[0].Addr())
+		_, _ = fmt.Fprintf(w, "web → api@%s → ok\n", insts[0].Addr())
 	})
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
 		insts, err := client.Resolve(r.Context(), "db", catalog.QueryOptions{Passing: true})
 		if err != nil || len(insts) == 0 {
-			http.Error(w, "db unavailable", 503)
+			http.Error(w, "db unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		fmt.Fprintf(w, "api → db@%s → ok\n", insts[0].Addr())
+		_, _ = fmt.Fprintf(w, "api → db@%s → ok\n", insts[0].Addr())
 	})
 	mux.HandleFunc("/services", func(w http.ResponseWriter, r *http.Request) {
 		for _, name := range []string{"web", "api", "db"} {
 			insts, _ := client.Resolve(r.Context(), name, catalog.QueryOptions{})
-			fmt.Fprintf(w, "%s: %d instances\n", name, len(insts))
+			_, _ = fmt.Fprintf(w, "%s: %d instances\n", name, len(insts))
 		}
 	})
 
-	srv := &http.Server{Addr: ":8090", Handler: mux}
+	srv := &http.Server{Addr: ":8090", Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		log.Printf("demo listening on :8090  (GET /web /api /services)")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

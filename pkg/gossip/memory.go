@@ -31,8 +31,8 @@ type NetworkConfig struct {
 
 // Cluster is a shared fabric that connects MemoryMembership instances.
 type Cluster struct {
-	mu             sync.RWMutex
-	nodes          map[string]*MemoryMembership // by name
+	mu    sync.RWMutex
+	nodes map[string]*MemoryMembership // by name
 	// optional network effects
 	partition      map[string]map[string]bool // from -> to blocked
 	latency        time.Duration
@@ -192,9 +192,7 @@ func (m *MemoryMembership) mergeFrom(list []Member) {
 		cur, ok := m.members[other.ID]
 		if !ok || other.Incarnation > cur.Incarnation {
 			m.members[other.ID] = other
-			if other.ID != m.self.ID {
-				// notify join/update asynchronously outside? emit under lock carefully
-			}
+			//nolint:staticcheck // SA9003: intentionally no per-member notify here; membership events flow through broadcastEvent/applyMember to avoid lock-held fan-out.
 		}
 	}
 }
@@ -298,7 +296,14 @@ func (c *Cluster) broadcastEvent(origin *MemoryMembership, ev MemberEvent) {
 
 func (c *Cluster) DeliveredBytes() int64 { c.mu.RLock(); defer c.mu.RUnlock(); return c.deliveredBytes }
 func (c *Cluster) SentBytes() int64      { c.mu.RLock(); defer c.mu.RUnlock(); return c.sentBytes }
-func (c *Cluster) MaxHop() int           { c.mu.RLock(); defer c.mu.RUnlock(); if c.maxHop == 0 { return 1 }; return c.maxHop }
+func (c *Cluster) MaxHop() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.maxHop == 0 {
+		return 1
+	}
+	return c.maxHop
+}
 
 func (c *Cluster) deliverBroadcast(origin *MemoryMembership, payload []byte) {
 	c.mu.RLock()

@@ -1,0 +1,10 @@
+version: 2
+stale:
+  - matchLabels: { any: [stale-candidate] }
+    daysUntilStale: 60
+    daysUntilClose: 14
+    exemptLabels: [pinned, security, roadmap]
+    message: "No activity for 60d — please update or this will close in 14d."
+triage:
+  - matchLabels: { any: [bug] }
+    addLabels: [triage]

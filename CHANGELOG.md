@@ -5,6 +5,13 @@ All notable changes to `beacon` are documented here. Format based on [Keep a Cha
 ## [Unreleased]
 
 ### Fixed
+- `pkg/mesh/sds.go`: `Fetch` signs outside the cache lock (no `mu` across `CA.Sign`)
+- `pkg/xds/server.go`: `sortStrings` → `sort.Strings`; removal pushes ordered via `RemoveOrder` (`OrderedTypes`, make-before-break)
+- `pkg/lb/picker.go`: ring-hash O(n²) sort → `sort.Slice`
+- `pkg/telemetry`: `otlpFallback` wraps live OTLP exporter (was dead code)
+- `cmd/beacon-server`: real gRPC `ProtoServer.Serve` on `--grpc :8502` with `GracefulStop` (was placeholder)
+- `pkg/mesh`: `NewCAProduction` fail-closed constructor (production must use it)
+- `pkg/gossip`: deterministic loss drop (Loss=1.0 blocks all); `pkg/xds` debouncer test race fixed (`atomic.Int64`)
 - **Critical (9):** Agent.Register race, Clock injection, Restore monotonic, O(log N) docs, pendingFull anti-entropy, Merkle hash, tombstone propagation, CP ReadIndex quorum, Client mTLS VerifyPeerCertificate — see `ISSUES.md` C1-C9
 - **High (18):** UpdateHealth no-bump, Deregister incarnation 0, batch coalescing, watchMembership leak, UpdateCheckStatus output, lease grace, watcher ID collision, WatchMulti Send, P2C/Locality/xDS/Client races, NACK clear, RemoveOrder, weighted LB — H1-H18
 - **Medium (22):** per-service future-index, Equal Incarnation, Clock rng, criticalSince timer, rate-limiter GC, ResolveService Wait, per-peer partition, leader forward, WAN wildcard, jitter, Wait cap, HTTP limiter GC, DNS strict tag, byName orphan, ctx Execute, StreamOutcomeReporter, CA dev-mode flag, entitlements copy, TLS1.3 defer — M1-M22

@@ -41,7 +41,7 @@ type Registry struct {
 	// fan-out: 200µs per watcher, cap 500ms
 	perWatcherSpread time.Duration
 	maxSpread        time.Duration
-	nextID   atomic.Uint64
+	nextID           atomic.Uint64
 }
 
 type watcher struct {
@@ -87,6 +87,7 @@ func (r *Registry) Cache() *Cache { return r.cache }
 
 // Watch opens a subscription. First delivery is a snapshot; subsequent are deltas.
 func (r *Registry) Watch(ctx context.Context, service string, fromIndex uint64) (<-chan Event, error) {
+	//nolint:gosec // G118: cancel is stored on the watcher and invoked by remove/unsubscribe; ownership is transferred, not lost.
 	ctx, cancel := context.WithCancel(ctx)
 	w := &watcher{
 		service: service,
@@ -352,9 +353,11 @@ func JitterDuration(d time.Duration, fraction float64, rng *rand.Rand) time.Dura
 //  2. Guard against a future index (reset to 0)
 //  3. On timeout, return current state — not an error
 func BlockingQuery(ctx context.Context, store *catalog.Store, service string, opts catalog.QueryOptions, clk clock.Clock, rng *rand.Rand) (*catalog.Result, error) {
-	if clk == nil {
-		clk = clock.New()
-	}
+	// NOTE: wakeups are driven by the catalog's own (clock-injected) index;
+	// only the timeout edge below is wall-clock, because Go context deadlines
+	// cannot run on a virtual clock. clk is kept for API stability and future
+	// virtual-deadline support.
+	_ = clk
 	wait := opts.Wait
 	if wait <= 0 {
 		wait = 5 * time.Minute

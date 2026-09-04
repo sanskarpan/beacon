@@ -38,7 +38,7 @@ func (c *remoteClient) Register(ctx context.Context, inst *catalog.Instance) (ui
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return 0, fmt.Errorf("register status %d", resp.StatusCode)
 	}
@@ -54,7 +54,7 @@ func (c *remoteClient) Deregister(ctx context.Context, id string) (uint64, error
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return 0, nil
 }
 
@@ -74,7 +74,7 @@ func (c *remoteClient) UpdateHealth(ctx context.Context, id string, h catalog.He
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return 0, nil
 }
 
@@ -87,9 +87,9 @@ func (c *remoteClient) NodeServices(ctx context.Context, node string) (map[strin
 
 func main() {
 	var (
-		node    = flag.String("node", "agent-1", "node name")
-		server  = flag.String("server", "http://127.0.0.1:8500", "beacon-server base URL")
-		dataDir = flag.String("data-dir", "./data/agent", "local state directory")
+		node     = flag.String("node", "agent-1", "node name")
+		server   = flag.String("server", "http://127.0.0.1:8500", "beacon-server base URL")
+		dataDir  = flag.String("data-dir", "./data/agent", "local state directory")
 		httpAddr = flag.String("http", ":8501", "agent local HTTP API")
 	)
 	flag.Parse()
@@ -105,12 +105,12 @@ func main() {
 	localStore := catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus))
 
 	a := agent.New(agent.Config{
-		NodeName: *node,
-		Client:   client,
-		Store:    localStore,
-		Bus:      bus,
-		Clock:    clk,
-		DataDir:  *dataDir,
+		NodeName:    *node,
+		Client:      client,
+		Store:       localStore,
+		Bus:         bus,
+		Clock:       clk,
+		DataDir:     *dataDir,
 		ClusterSize: func() int { return 3 },
 	})
 
@@ -138,12 +138,20 @@ func main() {
 		w.WriteHeader(200)
 	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
+	agentSrv := &http.Server{
+		Addr:              *httpAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	go func() {
 		log.Printf("agent %s HTTP on %s (server=%s)", *node, *httpAddr, *server)
-		if err := http.ListenAndServe(*httpAddr, mux); err != nil {
+		if err := agentSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
 	}()

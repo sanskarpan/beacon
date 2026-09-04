@@ -2,7 +2,6 @@ package agent_test
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,7 +16,6 @@ import (
 // partitionClient is a CatalogClient that can simulate network partition
 // from the agent to servers (TODO-037).
 type partitionClient struct {
-	mu        sync.Mutex
 	store     *catalog.Store
 	node      string
 	partition atomic.Bool
@@ -72,13 +70,13 @@ func TestAgent_PartitionFromServersE2E(t *testing.T) {
 	// Short min sync for tests; SyncInterval scales with cluster size —
 	// override by calling Sync directly after heal.
 	ag := agent.New(agent.Config{
-		NodeName: "agent-1",
-		Client:   client,
-		Reader:   &catalogReader{store: serverStore, part: &client.partition},
-		Store:    catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus)),
-		Bus:      bus,
-		Clock:    clk,
-		MaxStale: 5 * time.Minute,
+		NodeName:    "agent-1",
+		Client:      client,
+		Reader:      &catalogReader{store: serverStore, part: &client.partition},
+		Store:       catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus)),
+		Bus:         bus,
+		Clock:       clk,
+		MaxStale:    5 * time.Minute,
 		ClusterSize: func() int { return 1 },
 	})
 

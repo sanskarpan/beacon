@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"go.opentelemetry.io/otel/attribute"
 	"github.com/sanskar/beacon/pkg/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // TODO-006: OTel tracing wiring — verify Init + span chain.

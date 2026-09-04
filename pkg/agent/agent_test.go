@@ -66,7 +66,7 @@ func TestCatalogRepopulationAfterWipe(t *testing.T) {
 	})
 	for i := 0; i < 5; i++ {
 		_ = a.Register(context.Background(), &catalog.Instance{
-			ID: string(rune('a'+i)), Service: "svc", Address: "127.0.0.1", Port: 8000 + i,
+			ID: string(rune('a' + i)), Service: "svc", Address: "127.0.0.1", Port: 8000 + i,
 			Health: catalog.HealthPassing,
 		})
 	}

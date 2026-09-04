@@ -72,13 +72,13 @@ func parseTarget(target resolver.Target) (string, catalog.QueryOptions) {
 }
 
 type beaconResolver struct {
-	client  *Client
-	cc      resolver.ClientConn
-	service string
-	opts    catalog.QueryOptions
-	ctx     context.Context
-	cancel  context.CancelFunc
-	mu      sync.Mutex
+	client   *Client
+	cc       resolver.ClientConn
+	service  string
+	opts     catalog.QueryOptions
+	ctx      context.Context
+	cancel   context.CancelFunc
+	mu       sync.Mutex
 	lastGood []resolver.Address
 	attempt  int
 	lastIdx  uint64

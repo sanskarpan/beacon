@@ -40,7 +40,7 @@ func TestDelta1000xReduction(t *testing.T) {
 	// 500 endpoints to keep test fast while still showing large ratio
 	for i := 0; i < 500; i++ {
 		_, _ = cs.Register(context.Background(), &catalog.Instance{
-			ID: string(rune(i%26+'a')) + string(rune(i/26+'a')) + string(rune(i%10+'0')),
+			ID:      string(rune(i%26+'a')) + string(rune(i/26+'a')) + string(rune(i%10+'0')),
 			Service: "huge", Node: "n", Address: "10.0.0.1", Port: 10000 + i,
 			Health: catalog.HealthPassing,
 		})

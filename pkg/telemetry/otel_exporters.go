@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/trace"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // newStdoutExporter returns a SpanExporter that logs to stdout (for dev/demo).
@@ -28,14 +28,16 @@ func (e *stdoutExporter) ExportSpans(_ context.Context, spans []sdktrace.ReadOnl
 
 func (e *stdoutExporter) Shutdown(_ context.Context) error { return nil }
 
-// newOTLPGRPCExporter creates a real OTLP gRPC exporter to the given endpoint.
+// newOTLPExporter creates a real OTLP gRPC exporter to the given endpoint.
+// The exporter is wrapped in otlpFallback so a mid-run OTLP outage degrades
+// to stdout logging instead of dropping spans silently.
 func newOTLPExporter(endpoint string) sdktrace.SpanExporter {
 	exp, err := newOTLPGRPCExporter(endpoint)
 	if err != nil {
 		log.Printf("[otel] OTLP exporter unavailable (%v), falling back to stdout", err)
 		return newStdoutExporter()
 	}
-	return exp
+	return &otlpFallback{inner: exp}
 }
 
 func newOTLPGRPCExporter(endpoint string) (sdktrace.SpanExporter, error) {

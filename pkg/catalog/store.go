@@ -49,7 +49,7 @@ type Store struct {
 	batcher *IndexBatcher
 	// if batching is enabled, mutations stage service names and flush later
 	batchEnabled bool
-	limiter *rateLimiter
+	limiter      *rateLimiter
 }
 
 type indexWaiter struct {
@@ -81,7 +81,7 @@ func WithBatchWindow(d time.Duration) StoreOption {
 // rateLimiter is a simple token bucket per node.
 type rateLimiter struct {
 	mu        sync.Mutex
-	limit     int           // tokens per second
+	limit     int // tokens per second
 	burst     int
 	tokens    map[string]float64
 	lastCheck map[string]time.Time
@@ -629,8 +629,8 @@ func (s *Store) flushBatch(services []string, index uint64) {
 	}
 	if s.bus != nil {
 		s.bus.Publish(events.Event{
-			Kind:  events.EvIndexBumped,
-			Index: s.index,
+			Kind:   events.EvIndexBumped,
+			Index:  s.index,
 			Detail: fmt.Sprintf("batched %d services", len(seen)),
 		})
 	}
@@ -721,7 +721,8 @@ func matchFilterExpr(inst *Instance, expr string) bool {
 		if p == "" {
 			continue
 		}
-		if strings.HasPrefix(p, "Meta.") {
+		switch {
+		case strings.HasPrefix(p, "Meta."):
 			rest := strings.TrimPrefix(p, "Meta.")
 			kv := strings.SplitN(rest, "==", 2)
 			if len(kv) != 2 {
@@ -732,7 +733,7 @@ func matchFilterExpr(inst *Instance, expr string) bool {
 			if inst.Meta[key] != val {
 				return false
 			}
-		} else if strings.HasPrefix(p, "Health") {
+		case strings.HasPrefix(p, "Health"):
 			kv := strings.SplitN(p, "==", 2)
 			if len(kv) != 2 {
 				return false
@@ -741,7 +742,7 @@ func matchFilterExpr(inst *Instance, expr string) bool {
 			if string(inst.Health) != val {
 				return false
 			}
-		} else {
+		default:
 			return false
 		}
 	}

@@ -14,7 +14,10 @@
 
 - **mTLS (SPIFFE):** Every workload gets a short-lived leaf cert (`pkg/mesh`) via SDS, rotated at 50% lifetime. IPs are *not* identities.
 - **Intentions:** L4 `Source → Destination` `Allow/Deny` with precedence; default deny.
-- **Entitlements:** `CA.Entitle(workload, spiffeURI)` must be called before `Sign`. When no entitlements are configured, `SetInsecureAllowAll(true)` is required for dev — production must set `false`.
+- **Entitlements:** production CAs come from `mesh.NewCAProduction` (fail-closed:
+  `Sign` denies any workload→SPIFFE pair not granted via `CA.Entitle`).
+  `mesh.NewCA` keeps a permissive dev default for backward compat — never use
+  it in production.
 - **Rate limiting:** Per-node registration (`pkg/catalog`) and per-IP HTTP (`pkg/api/httpapi`) with GC; not an authz boundary.
 
 ## Reporting a Vulnerability
@@ -29,7 +32,8 @@ We will acknowledge within 48 hours, provide a fix timeline within 7 days, and c
 
 ## Hardening Checklist (operator)
 
-- Run with `CA.SetInsecureAllowAll(false)` and explicit `Entitle` per workload.
+- Build production CAs with `mesh.NewCAProduction` and explicit `Entitle` per workload.
+- CI enforces `gosec` + `govulncheck` + CodeQL + OpenSSF Scorecard (weekly and on push).
 - Serve `ServerTLSConfig` with `ClientAuth: RequireAndVerifyClientCert`; do not set `InsecureSkipVerify` on clients without `VerifyPeerCertificate`.
 - Rotate CA via `NewIntermediateCA`; distribute `Bundle()` via SDS, not static files.
 - Enable `golangci-lint` `gosec` and `govulncheck` in CI before release.

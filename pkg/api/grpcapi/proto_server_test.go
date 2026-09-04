@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sanskar/beacon/pkg/api/grpcapi"
+	_ "github.com/sanskar/beacon/pkg/api/grpcapi" // ensure json codec registered
 	"github.com/sanskar/beacon/pkg/api/pb"
 	"github.com/sanskar/beacon/pkg/catalog"
 	"github.com/sanskar/beacon/pkg/events"
@@ -16,7 +17,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/test/bufconn"
-	_ "github.com/sanskar/beacon/pkg/api/grpcapi" // ensure json codec registered
 )
 
 // TestProtoWire_WatchEndToEnd (TODO-018): generated client Watch over real protobuf

@@ -1,0 +1,37 @@
+site_name: beacon
+site_url: https://sanskarpan.github.io/beacon/
+repo_url: https://github.com/sanskarpan/beacon
+repo_name: sanskarpan/beacon
+theme:
+  name: material
+  palette:
+    - { scheme: slate, primary: indigo }
+  features: [navigation.tabs, navigation.sections, search.suggest, content.code.copy]
+markdown_extensions: [admonition, pymdownx.superfences, pymdownx.tabbed, toc, tables, footnotes]
+nav:
+  - Home: index.md
+  - Architecture: ARCHITECTURE.md
+  - Configuration: CONFIGURATION.md
+  - API: API.md
+  - Deployment: DEPLOYMENT.md
+  - Observability: OBSERVABILITY.md
+  - Consistency: CONSISTENCY.md
+  - Health: HEALTH.md
+  - Propagation: PROPAGATION.md
+  - Watch: WATCH.md
+  - xDS: XDS.md
+  - Integration: INTEGRATION.md
+  - Anti-Entropy: ANTI_ENTROPY.md
+  - Console: CONSOLE.md
+  - SLOs: SLO.md
+  - Disaster Recovery: DISASTER-RECOVERY.md
+  - Runbooks:
+      - runbooks/RUNBOOK.md
+      - runbooks/gossip-partition.md
+      - runbooks/xds-nack.md
+      - runbooks/flapping.md
+  - ADRs:
+      - adr/0001-ap-vs-cp.md
+      - adr/0002-agent-local-health.md
+      - adr/0003-monotonic-index.md
+  - Production Audit: PRODUCTION_AUDIT_2026_09_04.md

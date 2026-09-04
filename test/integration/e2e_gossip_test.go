@@ -214,7 +214,7 @@ func TestE2E_FullStateSync(t *testing.T) {
 	stacks[0].GossipCluster.Partition([]string{"n0"}, []string{"n1"})
 	for i := 0; i < 50; i++ {
 		_, _ = stacks[0].Store.Register(context.Background(), &catalog.Instance{
-			ID: string(rune('A'+(i%26))) + string(rune('0'+i/26)),
+			ID:      string(rune('A'+(i%26))) + string(rune('0'+i/26)),
 			Service: "bulk", Node: "n0", Address: "10.0.0.1", Port: 8000 + i,
 			Health: catalog.HealthPassing,
 		})

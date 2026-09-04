@@ -15,13 +15,13 @@ type NodeID string
 
 // Member is a node in the membership pool.
 type Member struct {
-	ID      NodeID            `json:"id"`
-	Name    string            `json:"name"`
-	Addr    string            `json:"addr"`
-	Port    int               `json:"port"`
-	Meta    map[string]string `json:"meta,omitempty"`
-	Status  MemberStatus      `json:"status"`
-	Incarnation uint64        `json:"incarnation"`
+	ID          NodeID            `json:"id"`
+	Name        string            `json:"name"`
+	Addr        string            `json:"addr"`
+	Port        int               `json:"port"`
+	Meta        map[string]string `json:"meta,omitempty"`
+	Status      MemberStatus      `json:"status"`
+	Incarnation uint64            `json:"incarnation"`
 }
 
 // MemberStatus is node-level liveness.

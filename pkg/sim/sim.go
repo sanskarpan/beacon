@@ -39,10 +39,10 @@ type AssertResult struct {
 
 // Runner executes scenarios.
 type Runner struct {
-	clk     *clock.Virtual
-	bus     *events.Bus
-	traceW  *os.File
-	outDir  string
+	clk    *clock.Virtual
+	bus    *events.Bus
+	traceW *os.File
+	outDir string
 }
 
 // NewRunner creates a scenario runner with a virtual clock.
@@ -51,8 +51,8 @@ func NewRunner(outDir string) *Runner {
 	bus := events.NewBus(clk)
 	var f *os.File
 	if outDir != "" {
-		_ = os.MkdirAll(outDir, 0o755)
-		f, _ = os.Create(outDir + "/trace.jsonl")
+		_ = os.MkdirAll(outDir, 0o750)
+		f, _ = os.Create(outDir + "/trace.jsonl") //nolint:gosec // G304: sim output dir from CLI flag, fixed filename
 		if f != nil {
 			bus.SetJSONLWriter(f)
 		}
@@ -110,16 +110,18 @@ func (r *Runner) Propagate(nodes int) Result {
 	res.Metrics["nodes"] = nodes
 	res.Metrics["converged"] = converged
 	res.Metrics["elapsed_ms"] = elapsed.Milliseconds()
-	res.Assertions = append(res.Assertions, AssertResult{
-		Name:   "all_nodes_see_instance",
-		OK:     converged == nodes,
-		Detail: fmt.Sprintf("%d/%d", converged, nodes),
-	})
-	res.Assertions = append(res.Assertions, AssertResult{
-		Name:   "convergence_under_2s",
-		OK:     elapsed <= 2*time.Second,
-		Detail: elapsed.String(),
-	})
+	res.Assertions = append(res.Assertions,
+		AssertResult{
+			Name:   "all_nodes_see_instance",
+			OK:     converged == nodes,
+			Detail: fmt.Sprintf("%d/%d", converged, nodes),
+		},
+		AssertResult{
+			Name:   "convergence_under_2s",
+			OK:     elapsed <= 2*time.Second,
+			Detail: elapsed.String(),
+		},
+	)
 	res.OK = allOK(res.Assertions)
 	return res
 }
@@ -234,7 +236,7 @@ func (r *Runner) Storm(n int) Result {
 	// Batching should mean far fewer index-driven wakes than N
 	res.Assertions = append(res.Assertions, AssertResult{
 		Name:   "batching_reduces_bumps",
-		OK:     cs.Index() < uint64(n) || notif < n,
+		OK:     cs.Index() < uint64(max(n, 0)) || notif < n, //nolint:gosec // G115: max(n,0) is non-negative by construction
 		Detail: fmt.Sprintf("index=%d notif=%d n=%d", cs.Index(), notif, n),
 	})
 	res.OK = allOK(res.Assertions)
@@ -291,7 +293,6 @@ func (r *Runner) Herd(watchers int) Result {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	type hit struct{ t time.Time }
 	hits := make(chan time.Time, watchers)
 	for i := 0; i < watchers; i++ {
 		ch, err := wr.Watch(ctx, "svc", 0)
@@ -399,7 +400,7 @@ func WriteJSON(path string, results []Result) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+	return os.WriteFile(path, b, 0o600)
 }
 
 func allOK(a []AssertResult) bool {

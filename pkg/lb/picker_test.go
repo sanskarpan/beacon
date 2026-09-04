@@ -12,7 +12,7 @@ import (
 func eps(n int) []*lb.Endpoint {
 	out := make([]*lb.Endpoint, n)
 	for i := 0; i < n; i++ {
-		out[i] = &lb.Endpoint{Addr: string(rune('a'+i)), Weight: 1, Healthy: true}
+		out[i] = &lb.Endpoint{Addr: string(rune('a' + i)), Weight: 1, Healthy: true}
 	}
 	return out
 }

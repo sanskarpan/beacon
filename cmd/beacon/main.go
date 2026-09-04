@@ -104,15 +104,18 @@ func cmdRegister(args []string) {
 		inst.ID = fmt.Sprintf("%s-%d", *name, *port)
 	}
 	b, _ := json.Marshal(inst)
-	resp, err := http.Post(*srv+"/v1/agent/service/register", "application/json", bytes.NewReader(b))
-	// server expects PUT
+	// Legacy POST probe (server expects PUT); drain and close to avoid leaking the connection.
+	if postResp, postErr := http.Post(*srv+"/v1/agent/service/register", "application/json", bytes.NewReader(b)); postErr == nil {
+		_, _ = io.Copy(io.Discard, postResp.Body)
+		_ = postResp.Body.Close()
+	}
 	req, _ := http.NewRequest(http.MethodPut, *srv+"/v1/agent/service/register", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	fmt.Printf("%s %s\n", resp.Status, body)
 }
@@ -131,7 +134,7 @@ func cmdDeregister(args []string) {
 	if err != nil {
 		fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	fmt.Println(resp.Status)
 }
 
@@ -143,7 +146,7 @@ func cmdServices(args []string) {
 	if err != nil {
 		fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(os.Stdout, resp.Body)
 	fmt.Println()
 }
@@ -166,7 +169,7 @@ func cmdInstances(args []string) {
 	if err != nil {
 		fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(os.Stdout, resp.Body)
 	fmt.Println()
 }
@@ -190,9 +193,9 @@ func cmdWatch(args []string) {
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if v := resp.Header.Get("X-Beacon-Index"); v != "" {
-			fmt.Sscanf(v, "%d", &index)
+			_, _ = fmt.Sscanf(v, "%d", &index)
 		}
 		fmt.Printf("index=%d %s\n", index, body)
 	}
@@ -248,7 +251,7 @@ func cmdBench(args []string) {
 		results := sim.MeasurePropagation(20, 10)
 		fmt.Println(sim.MarkdownTable(results))
 		b, _ := json.MarshalIndent(results, "", "  ")
-		_ = os.WriteFile("tmp/sim/propagation.json", b, 0o644)
+		_ = os.WriteFile("tmp/sim/propagation.json", b, 0o600)
 		return
 	}
 	fmt.Println("unknown bench", args[0])

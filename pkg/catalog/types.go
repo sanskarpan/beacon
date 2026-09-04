@@ -2,6 +2,7 @@
 package catalog
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -153,11 +154,11 @@ type Instance struct {
 	LastKnownHealth HealthStatus `json:"last_known_health,omitempty"`
 	Lease           *Lease       `json:"lease,omitempty"`
 	// Incarnation is the per-origin counter for gossip conflict resolution.
-	Incarnation   uint64 `json:"incarnation,omitempty"`
-	Deregistered  bool   `json:"deregistered,omitempty"`
-	CreateIndex   uint64 `json:"create_index"`
-	ModifyIndex   uint64 `json:"modify_index"`
-	TraceID       string `json:"trace_id,omitempty"`
+	Incarnation  uint64 `json:"incarnation,omitempty"`
+	Deregistered bool   `json:"deregistered,omitempty"`
+	CreateIndex  uint64 `json:"create_index"`
+	ModifyIndex  uint64 `json:"modify_index"`
+	TraceID      string `json:"trace_id,omitempty"`
 }
 
 // Clone returns a deep copy.
@@ -205,7 +206,7 @@ func (i *Instance) Equal(o *Instance) bool {
 	// Fast path via JSON for correctness over micro-opts.
 	a, _ := json.Marshal(i.canonical())
 	b, _ := json.Marshal(o.canonical())
-	return string(a) == string(b)
+	return bytes.Equal(a, b)
 }
 
 func (i *Instance) canonical() *Instance {
@@ -245,16 +246,16 @@ type QueryOptions struct {
 
 // Result is a catalog query response.
 type Result struct {
-	Service   string      `json:"service"`
-	Instances []*Instance `json:"instances"`
-	Index     uint64      `json:"index"`
-	Stale     bool        `json:"stale,omitempty"`
+	Service     string        `json:"service"`
+	Instances   []*Instance   `json:"instances"`
+	Index       uint64        `json:"index"`
+	Stale       bool          `json:"stale,omitempty"`
 	LastContact time.Duration `json:"last_contact,omitempty"`
 }
 
 // Snapshot is a full catalog serialization for Raft/CP and tests.
 type Snapshot struct {
-	Index     uint64                `json:"index"`
-	Services  map[string]*Service   `json:"services"`
-	Instances map[string]*Instance  `json:"instances"`
+	Index     uint64               `json:"index"`
+	Services  map[string]*Service  `json:"services"`
+	Instances map[string]*Instance `json:"instances"`
 }

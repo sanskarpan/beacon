@@ -41,9 +41,9 @@ type Server struct {
 	onDeregister func(id, service string, idx uint64)
 	mux          *http.ServeMux
 	// rate limit per remote addr
-	limiters sync.Map // string -> *httpLimiterEntry
-	rps      rate.Limit
-	burst    int
+	limiters   sync.Map // string -> *httpLimiterEntry
+	rps        rate.Limit
+	burst      int
 	queries    *query.Store
 	intentions *mesh.IntentionStore
 	xds        *xds.Server
@@ -158,9 +158,17 @@ func (s *Server) routes() {
 // Handler returns the root handler.
 func (s *Server) Handler() http.Handler { return s.mux }
 
-// ListenAndServe starts the server.
+// ListenAndServe starts the server with Slowloris-safe timeouts.
 func (s *Server) ListenAndServe(addr string) error {
-	return http.ListenAndServe(addr, s.mux)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           s.mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	return srv.ListenAndServe()
 }
 
 func (s *Server) wrap(next http.HandlerFunc) http.HandlerFunc {
@@ -429,7 +437,9 @@ func (s *Server) sse(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			b, _ := json.Marshal(ev)
-			fmt.Fprintf(w, "data: %s\n\n", b)
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+				return
+			}
 			flusher.Flush()
 		}
 	}

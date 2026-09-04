@@ -16,6 +16,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 var (
@@ -31,7 +32,7 @@ func ResetForTest() {
 	defer mu.Unlock()
 	initOnce = sync.Once{}
 	globalTracer = nil
-	otel.SetTracerProvider(trace.NewNoopTracerProvider())
+	otel.SetTracerProvider(tracenoop.NewTracerProvider())
 }
 
 // Init sets up the global OTel provider with a simple stdout exporter.

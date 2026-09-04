@@ -1,6 +1,7 @@
 package dns_test
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
@@ -17,7 +18,7 @@ func BenchmarkDNS_A(b *testing.B) {
 	cs := catalog.NewStore()
 	// Seed 100 instances.
 	for i := 0; i < 100; i++ {
-		_, _ = cs.Register(nil, &catalog.Instance{
+		_, _ = cs.Register(context.Background(), &catalog.Instance{
 			ID: fmt.Sprintf("dns-%d", i), Service: "web",
 			Address: fmt.Sprintf("10.0.%d.%d", i/256, i%256), Port: 8080,
 			Health: catalog.HealthPassing, Node: fmt.Sprintf("node-%d", i),
@@ -41,7 +42,7 @@ func BenchmarkDNS_A(b *testing.B) {
 func TestDNS_LatencyPercentiles(t *testing.T) {
 	cs := catalog.NewStore()
 	for i := 0; i < 1000; i++ {
-		_, _ = cs.Register(nil, &catalog.Instance{
+		_, _ = cs.Register(context.Background(), &catalog.Instance{
 			ID: fmt.Sprintf("lat-%d", i), Service: "api",
 			Address: fmt.Sprintf("10.0.%d.%d", i/256, i%256), Port: 8080,
 			Health: catalog.HealthPassing, Node: fmt.Sprintf("n-%d", i),
@@ -88,13 +89,13 @@ type fakeWriter struct {
 
 func (f *fakeWriter) WriteMsg(m *miedns.Msg) error { f.msg = *m; return nil }
 func (f *fakeWriter) Write([]byte) (int, error)    { return 0, nil }
-func (f *fakeWriter) Close() error                  { return nil }
+func (f *fakeWriter) Close() error                 { return nil }
 func (f *fakeWriter) LocalAddr() net.Addr {
 	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8600}
 }
-func (f *fakeWriter) RemoteAddr() net.Addr     { return f.remote }
-func (f *fakeWriter) TsigStatus() error        { return nil }
-func (f *fakeWriter) TsigTimersOnly(bool)      {}
-func (f *fakeWriter) Hijack()                  {}
-func (f *fakeWriter) SetUDPSize(s uint16)      {}
-func (f *fakeWriter) GetUDPSize() uint16       { return 4096 }
+func (f *fakeWriter) RemoteAddr() net.Addr { return f.remote }
+func (f *fakeWriter) TsigStatus() error    { return nil }
+func (f *fakeWriter) TsigTimersOnly(bool)  {}
+func (f *fakeWriter) Hijack()              {}
+func (f *fakeWriter) SetUDPSize(s uint16)  {}
+func (f *fakeWriter) GetUDPSize() uint16   { return 4096 }

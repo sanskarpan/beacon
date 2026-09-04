@@ -2,7 +2,6 @@ package agent_test
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,7 +13,6 @@ import (
 
 // countingClient records sync-related register calls.
 type countingClient struct {
-	mu    sync.Mutex
 	inner *agent.LocalClient
 	regs  atomic.Int64
 }

@@ -134,7 +134,7 @@ func dialBeacon(t *testing.T, client *sdk.Client, policy string) *grpc.ClientCon
 	if policy == "round_robin" {
 		name = "round_robin"
 	}
-	sc := fmt.Sprintf(`{"loadBalancingConfig": [{"%s": {}}]}`, name)
+	sc := fmt.Sprintf(`{"loadBalancingConfig": [{%q: {}}]}`, name)
 	conn, err := grpc.NewClient("beacon:///echo",
 		grpc.WithResolvers(sdk.NewBuilder(client)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),

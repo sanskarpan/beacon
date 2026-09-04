@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/gossip"
 	gswim "gossip-system/pkg/swim"
+
+	"github.com/sanskar/beacon/pkg/gossip"
 )
 
 // Ensure Adapter implements gossip.Membership.
@@ -35,8 +36,8 @@ func (c *Cluster) Inner() *gswim.Cluster { return c.inner }
 
 // Adapter is a gossip.Membership backed by real SWIM.
 type Adapter struct {
-	node *gswim.Node
-	mu   sync.Mutex
+	node    *gswim.Node
+	mu      sync.Mutex
 	bridges map[chan<- gossip.MemberEvent]chan gswim.Event
 }
 
