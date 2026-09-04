@@ -1,13 +1,55 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { fetchConsistency, labAction, type ConsistencyStatus } from "../api/client";
 
 export default function ConsistencyLab() {
-  const [partitioned, setPartitioned] = useState(false);
-  // Simulated divergence for the lab when server dual-mode isn't attached
-  const apA = partitioned ? 5 : 4;
-  const apB = partitioned ? 3 : 4;
-  const divergence = Math.abs(apA - apB);
-  const cpMinorityWrite = partitioned ? "REJECTED (no quorum)" : "OK";
-  const apWrite = "ACCEPTED both sides";
+  const [live, setLive] = useState<ConsistencyStatus | null>(null);
+  const [liveOk, setLiveOk] = useState(false);
+  const [simulatedPartitioned, setSimulatedPartitioned] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const st = await fetchConsistency();
+    if (st) {
+      setLive(st);
+      setLiveOk(true);
+    } else {
+      setLive(null);
+      setLiveOk(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 2000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  const toggle = async () => {
+    const next = live?.partitioned ? "heal" : "partition";
+    const st = await labAction(next);
+    if (st) {
+      setLive(st);
+      setLiveOk(true);
+    } else {
+      setSimulatedPartitioned((p) => !p);
+      setLiveOk(false);
+    }
+  };
+
+  // Live backend when /v1/lab/consistency is configured; otherwise fall back
+  // to the simulated overlay (lab/demo mode without a wired ConsistencyLab).
+  const partitioned = live?.partitioned ?? simulatedPartitioned;
+  const apA = live?.ap_a_instances ?? (partitioned ? 5 : 4);
+  const apB = live?.ap_b_instances ?? (partitioned ? 3 : 4);
+  const divergence = live?.divergence ?? Math.abs(apA - apB);
+  const cpMinorityWrite =
+    live != null
+      ? live.cp_minority_ok
+        ? "OK"
+        : `REJECTED (${live.cp_minority_msg || "no quorum"})`
+      : partitioned
+        ? "REJECTED (no quorum)"
+        : "OK";
+  const apWrite = live?.ap_write_note ?? "ACCEPTED both sides";
 
   return (
     <div className="space-y-4">
@@ -20,7 +62,7 @@ export default function ConsistencyLab() {
           </p>
         </div>
         <button
-          onClick={() => setPartitioned((p) => !p)}
+          onClick={toggle}
           className={`px-4 py-2 rounded-md border text-sm font-medium ${
             partitioned
               ? "border-signal-red/50 bg-signal-red/15 text-signal-red"

@@ -102,9 +102,11 @@ func TestSlowConsumerDoesNotStallOthers(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		r.Notify("svc", watch.Event{Kind: "add", Service: "svc", Index: uint64(i + 1)})
 	}
+	floodWait := time.NewTimer(2 * time.Second)
+	defer floodWait.Stop()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-floodWait.C:
 		t.Fatalf("fast consumer stalled; received=%d", received)
 	}
 }
@@ -125,9 +127,11 @@ func TestWatchGoroutineCleanup(t *testing.T) {
 		}
 		chs = append(chs, ch)
 		// drain snapshot so serve goroutine can exit cleanly
+		drainWait := time.NewTimer(100 * time.Millisecond)
 		select {
 		case <-ch:
-		case <-time.After(100 * time.Millisecond):
+			drainWait.Stop()
+		case <-drainWait.C:
 		}
 	}
 	cancel()
@@ -136,11 +140,11 @@ func TestWatchGoroutineCleanup(t *testing.T) {
 		for range ch {
 		}
 	}
-	// allow cleanup
+	// allow cleanup (tolerance base+10 per #92; 3s deadline absorbs CI noise)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		runtime.GC()
-		if runtime.NumGoroutine() <= base+30 {
+		if runtime.NumGoroutine() <= base+10 {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)

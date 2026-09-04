@@ -56,11 +56,14 @@ func (b *balancerBackend) serve() error {
 				MethodName: "Ping",
 				Handler: func(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 					if b.sleep > 0 {
+						timer := time.NewTimer(b.sleep)
 						select {
-						case <-time.After(b.sleep):
+						case <-timer.C:
 						case <-ctx.Done():
+							timer.Stop()
 							return nil, ctx.Err()
 						}
+						timer.Stop()
 					}
 					b.hits.Add(1)
 					// decode (or skip) the JSON body

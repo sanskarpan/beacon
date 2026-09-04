@@ -24,9 +24,11 @@ func TestManyConcurrentWatchers(t *testing.T) {
 			t.Fatal(err)
 		}
 		chs = append(chs, ch)
+		snapWait := time.NewTimer(time.Second)
 		select {
 		case <-ch: // snapshot
-		case <-time.After(time.Second):
+			snapWait.Stop()
+		case <-snapWait.C:
 			t.Fatal("no snapshot")
 		}
 	}

@@ -42,6 +42,7 @@ export type Instance = {
   health: string;
   weight: number;
   tags?: string[];
+  checks?: Array<{ id: string; status: string; output?: string }>;
   locality?: { region?: string; zone?: string };
 };
 

@@ -48,7 +48,9 @@ type watcher struct {
 	id      uint64
 	service string
 	ch      chan Event
-	lastIdx uint64
+	// lastIdx is written by the serve goroutine and read by Stats()
+	// under RLock — plain uint64 was a data race (#86).
+	lastIdx atomic.Uint64
 	cancel  context.CancelFunc
 
 	sendMu   sync.Mutex
@@ -92,9 +94,9 @@ func (r *Registry) Watch(ctx context.Context, service string, fromIndex uint64) 
 	w := &watcher{
 		service: service,
 		ch:      make(chan Event, 16),
-		lastIdx: fromIndex,
 		cancel:  cancel,
 	}
+	w.lastIdx.Store(fromIndex)
 
 	r.mu.Lock()
 	w.id = r.nextID.Add(1)
@@ -149,11 +151,11 @@ func (w *watcher) closeCh() {
 
 func (r *Registry) serve(ctx context.Context, w *watcher) {
 	// Try cache resumption
-	if w.lastIdx > 0 {
-		evs, err := r.cache.Since(w.lastIdx)
+	if w.lastIdx.Load() > 0 {
+		evs, err := r.cache.Since(w.lastIdx.Load())
 		if err == ErrIndexCompacted {
 			if r.bus != nil {
-				r.bus.Publish(events.Event{Kind: events.EvWatchCompacted, Service: w.service, Index: w.lastIdx})
+				r.bus.Publish(events.Event{Kind: events.EvWatchCompacted, Service: w.service, Index: w.lastIdx.Load()})
 			}
 			// fall through to snapshot
 		} else if err == nil && len(evs) > 0 {
@@ -166,7 +168,7 @@ func (r *Registry) serve(ctx context.Context, w *watcher) {
 				if sent, closed := w.trySend(ev); closed {
 					return
 				} else if sent {
-					w.lastIdx = ev.Index
+					w.lastIdx.Store(ev.Index)
 				}
 			}
 			return // subsequent updates via Notify
@@ -193,7 +195,7 @@ func (r *Registry) serve(ctx context.Context, w *watcher) {
 	default:
 	}
 	if sent, closed := w.trySend(ev); !closed && sent {
-		w.lastIdx = res.Index
+		w.lastIdx.Store(res.Index)
 	}
 }
 
@@ -304,7 +306,7 @@ func (r *Registry) Stats() map[string]any {
 			list = append(list, map[string]any{
 				"service": svc,
 				"id":      w.id,
-				"index":   w.lastIdx,
+				"index":   w.lastIdx.Load(),
 			})
 		}
 	}

@@ -287,8 +287,13 @@ func (r *Runner) Flap() Result {
 // Herd measures notification timestamp spread.
 func (r *Runner) Herd(watchers int) Result {
 	res := Result{Name: "herd", Metrics: map[string]any{}}
-	cs := catalog.NewStore(catalog.WithClock(r.clk), catalog.WithBus(r.bus))
-	wr := watch.NewRegistry(cs, watch.WithWatchClock(r.clk), watch.WithWatchBus(r.bus))
+	// Use wall time for this scenario. Virtual timers are drained synchronously
+	// when the clock advances, so observer goroutines would all record the final
+	// virtual timestamp instead of the actual staggered delivery times.
+	clk := clock.New()
+	bus := events.NewBus(clk)
+	cs := catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus))
+	wr := watch.NewRegistry(cs, watch.WithWatchClock(clk), watch.WithWatchBus(bus))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -302,29 +307,27 @@ func (r *Runner) Herd(watchers int) Result {
 		go func() {
 			for ev := range ch {
 				if ev.Kind != "snapshot" {
-					hits <- r.clk.Now()
+					hits <- clk.Now()
 				}
 			}
 		}()
 	}
 	// drain snapshots
 	time.Sleep(10 * time.Millisecond)
-	r.clk.Advance(10 * time.Millisecond)
 
 	_, _ = cs.Register(context.Background(), &catalog.Instance{
 		ID: "1", Service: "svc", Node: "n", Address: "1.1.1.1", Port: 1, Health: catalog.HealthPassing,
 	})
 	wr.Notify("svc", watch.Event{Kind: "add", Service: "svc", Index: cs.Index()})
 
-	// advance enough for staggered fan-out
-	r.clk.Advance(500 * time.Millisecond)
-	time.Sleep(20 * time.Millisecond)
+	// Allow the staggered fan-out to complete.
+	time.Sleep(100 * time.Millisecond)
 
 	var times []time.Time
 	for {
 		select {
-		case t := <-hits:
-			times = append(times, t)
+		case hit := <-hits:
+			times = append(times, hit)
 		default:
 			goto done
 		}

@@ -57,9 +57,11 @@ func TestWatchSnapshotThenDelta(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	wr.Notify("api", watch.Event{Kind: "add", Service: "api", Index: 2})
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-timer.C:
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -86,12 +88,15 @@ func TestWatchMultiSubscribeUnsubscribe(t *testing.T) {
 	go func() {
 		_ = srv.WatchMultiStream(
 			func() (*grpcapi.WatchMultiRequest, error) {
+				timer := time.NewTimer(200 * time.Millisecond)
 				select {
 				case r := <-reqs:
+					timer.Stop()
 					return r, nil
-				case <-time.After(200 * time.Millisecond):
+				case <-timer.C:
 					return nil, io.EOF
 				case <-ctx.Done():
+					timer.Stop()
 					return nil, ctx.Err()
 				}
 			},

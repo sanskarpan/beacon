@@ -43,7 +43,11 @@ func main() {
 	case "bench":
 		cmdBench(os.Args[2:])
 	case "prepared-query", "pq":
-		fmt.Println("prepared queries: use the query.Store API or HTTP extension; see pkg/query")
+		cmdPreparedQuery(os.Args[2:])
+	case "intentions":
+		cmdIntentions(os.Args[2:])
+	case "xds":
+		cmdXDS(os.Args[2:])
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -64,7 +68,10 @@ Usage:
   beacon watch      NAME [--server URL]
   beacon resolve    NAME [--server URL]
   beacon sim        [propagate|partition|storm|flap|herd|cascade|all]
-  beacon bench      propagate
+  beacon bench      [propagate|contrast]
+  beacon prepared-query list|create|delete|execute [--server URL]
+  beacon intentions list|create|delete [--server URL]
+  beacon xds status [--node NODE] [--server URL]
 
 `)
 }
@@ -254,7 +261,149 @@ func cmdBench(args []string) {
 		_ = os.WriteFile("tmp/sim/propagation.json", b, 0o600)
 		return
 	}
+	if args[0] == "contrast" {
+		c := sim.MeasureGossipContrast(10, 5, 30*time.Second)
+		fmt.Println(sim.ContrastMarkdown(c))
+		if err := sim.WriteContrastJSON("tmp/sim", c); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	fmt.Println("unknown bench", args[0])
+}
+
+// doJSON performs one HTTP call and streams the response body to stdout.
+func doJSON(method, url string, body any) {
+	var rdr io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			fatal(err)
+		}
+		rdr = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, url, rdr)
+	if err != nil {
+		fatal(err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		fatal(fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(b))))
+	}
+	_, _ = io.Copy(os.Stdout, resp.Body)
+	fmt.Println()
+}
+
+func cmdPreparedQuery(args []string) {
+	fs := flag.NewFlagSet("prepared-query", flag.ExitOnError)
+	srv := serverFlag(fs)
+	id := fs.String("id", "", "query id (defaults to --name)")
+	name := fs.String("name", "", "query name")
+	service := fs.String("service", "", "service to resolve")
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: beacon prepared-query list|create|delete|execute [--id ID] [--name NAME] [--service SVC]")
+		os.Exit(2)
+	}
+	command := args[0]
+	_ = fs.Parse(args[1:])
+	switch command {
+	case "list":
+		doJSON(http.MethodGet, *srv+"/v1/query", nil)
+	case "create":
+		if *service == "" {
+			fmt.Fprintln(os.Stderr, "create requires --service")
+			os.Exit(2)
+		}
+		qid := *id
+		if qid == "" {
+			qid = *name
+		}
+		doJSON(http.MethodPut, *srv+"/v1/query", map[string]any{
+			"id": qid, "name": *name, "service": *service,
+		})
+	case "delete":
+		if *id == "" && *name == "" {
+			fmt.Fprintln(os.Stderr, "delete requires --id or --name")
+			os.Exit(2)
+		}
+		target := *id
+		if target == "" {
+			target = *name
+		}
+		doJSON(http.MethodDelete, *srv+"/v1/query/"+target, nil)
+	case "execute":
+		if *id == "" && *name == "" {
+			fmt.Fprintln(os.Stderr, "execute requires --id or --name")
+			os.Exit(2)
+		}
+		target := *id
+		if target == "" {
+			target = *name
+		}
+		doJSON(http.MethodGet, *srv+"/v1/query/"+target+"/execute", nil)
+	default:
+		fmt.Fprintln(os.Stderr, "want list|create|delete|execute")
+		os.Exit(2)
+	}
+}
+
+func cmdIntentions(args []string) {
+	fs := flag.NewFlagSet("intentions", flag.ExitOnError)
+	srv := serverFlag(fs)
+	src := fs.String("source", "", "source service (or *)")
+	dst := fs.String("destination", "", "destination service")
+	action := fs.String("action", "allow", "allow|deny")
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: beacon intentions list|create|delete [--source S] [--destination D] [--action allow|deny]")
+		os.Exit(2)
+	}
+	command := args[0]
+	_ = fs.Parse(args[1:])
+	switch command {
+	case "list":
+		doJSON(http.MethodGet, *srv+"/v1/connect/intentions", nil)
+	case "create":
+		if *src == "" || *dst == "" {
+			fmt.Fprintln(os.Stderr, "create requires --source and --destination")
+			os.Exit(2)
+		}
+		doJSON(http.MethodPut, *srv+"/v1/connect/intentions", map[string]any{
+			"Source": *src, "Destination": *dst, "Action": *action,
+		})
+	case "delete":
+		if *src == "" || *dst == "" {
+			fmt.Fprintln(os.Stderr, "delete requires --source and --destination")
+			os.Exit(2)
+		}
+		doJSON(http.MethodDelete, *srv+"/v1/connect/intentions/"+*src+"/"+*dst, nil)
+	default:
+		fmt.Fprintln(os.Stderr, "want list|create|delete")
+		os.Exit(2)
+	}
+}
+
+func cmdXDS(args []string) {
+	fs := flag.NewFlagSet("xds", flag.ExitOnError)
+	srv := serverFlag(fs)
+	node := fs.String("node", "", "proxy node id (empty = all)")
+	if len(args) < 1 || args[0] != "status" {
+		fmt.Fprintln(os.Stderr, "usage: beacon xds status [--node NODE]")
+		os.Exit(2)
+	}
+	_ = fs.Parse(args[1:])
+	url := *srv + "/v1/xds/status"
+	if *node != "" {
+		url += "?node=" + *node
+	}
+	doJSON(http.MethodGet, url, nil)
 }
 
 func fatal(err error) {

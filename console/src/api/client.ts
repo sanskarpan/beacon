@@ -74,3 +74,69 @@ export function connectSSE(onEvent: (ev: unknown) => void, onStatus: (ok: boolea
     es?.close();
   };
 }
+
+// --- Issue #154: shared API types + fetch functions ---
+
+export type CallEdge = {
+  source: string;
+  target: string;
+  rps: number;
+  error_rate: number;
+  successes: number;
+  failures: number;
+  window_sec: number;
+};
+
+export type WatcherInfo = { service: string; id: number; index: number };
+
+export type WatchStats = {
+  total_watchers: number;
+  watchers: WatcherInfo[];
+  cache: { oldest: number; newest: number; size: number } | null;
+};
+
+export type ConsistencyStatus = {
+  partitioned: boolean;
+  ap_a_instances: number;
+  ap_b_instances: number;
+  divergence: number;
+  ap_write_note: string;
+  cp_majority_ok: boolean;
+  cp_minority_ok: boolean;
+  cp_minority_msg: string;
+  cp_leader: string;
+  cp_index_leader: number;
+  cp_index_minority: number;
+};
+
+async function getJSON<T>(path: string): Promise<T | null> {
+  try {
+    const r = await fetch(`${BASE}${path}`);
+    if (!r.ok) return null;
+    return (await r.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+export function fetchCallEdges(): Promise<CallEdge[] | null> {
+  return getJSON<CallEdge[]>("/v1/telemetry/calls");
+}
+
+export function fetchWatchStats(): Promise<WatchStats | null> {
+  return getJSON<WatchStats>("/v1/watch/stats");
+}
+
+export function fetchConsistency(): Promise<ConsistencyStatus | null> {
+  return getJSON<ConsistencyStatus>("/v1/lab/consistency");
+}
+
+export async function labAction(action: "partition" | "heal"): Promise<ConsistencyStatus | null> {
+  try {
+    const r = await fetch(`${BASE}/v1/lab/consistency/${action}`, { method: "POST" });
+    if (!r.ok) return null;
+    return (await r.json()) as ConsistencyStatus;
+  } catch {
+    return null;
+  }
+}

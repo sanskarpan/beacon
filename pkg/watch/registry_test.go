@@ -86,12 +86,57 @@ func TestWatchSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	snapWait := time.NewTimer(time.Second)
+	defer snapWait.Stop()
 	select {
 	case ev := <-ch:
 		if ev.Kind != "snapshot" {
 			t.Fatalf("want snapshot got %s", ev.Kind)
 		}
-	case <-time.After(time.Second):
+	case <-snapWait.C:
 		t.Fatal("timeout")
+	}
+}
+
+// TestStatsConcurrentWithServe guards #86: Stats() reads watcher.lastIdx
+// under RLock while serve goroutines write it. Must be race-free.
+func TestStatsConcurrentWithServe(t *testing.T) {
+	s := catalog.NewStore()
+	r := watch.NewRegistry(s)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := r.Watch(ctx, "svc", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// drain initial snapshot so serve proceeds to updates
+	snapTimer := time.NewTimer(2 * time.Second)
+	defer snapTimer.Stop()
+	select {
+	case <-ch:
+	case <-snapTimer.C:
+		t.Fatal("no snapshot")
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 50; i++ {
+			r.Notify("svc", watch.Event{Kind: "add", Service: "svc", Index: uint64(i + 1)})
+			_ = r.Stats()
+		}
+	}()
+	// concurrent reader drains + stats
+	stall := time.NewTimer(5 * time.Second)
+	defer stall.Stop()
+	for {
+		select {
+		case <-done:
+			_ = r.Stats()
+			return
+		case <-ch:
+			_ = r.Stats()
+		case <-stall.C:
+			t.Fatal("stall")
+		}
 	}
 }

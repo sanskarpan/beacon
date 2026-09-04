@@ -215,3 +215,33 @@ func TestSnapshotRestore(t *testing.T) {
 		t.Fatal("restore failed")
 	}
 }
+
+func TestFilterExpr_And(t *testing.T) {
+	s := catalog.NewStore()
+	mk := func(id, ver, region string, h catalog.HealthStatus) {
+		_, _ = s.Register(context.Background(), &catalog.Instance{
+			ID: id, Service: "pay", Node: "n", Address: "1.1.1.1", Port: 1,
+			Health: h, Meta: map[string]string{"version": ver, "region": region},
+		})
+	}
+	mk("a", "v2", "east", catalog.HealthPassing)
+	mk("b", "v2", "west", catalog.HealthPassing)
+	mk("c", "v1", "east", catalog.HealthPassing)
+	mk("d", "v2", "east", catalog.HealthCritical)
+
+	// two-way AND on Meta
+	res := s.GetNow("pay", catalog.QueryOptions{Filter: `Meta.version == "v2" && Meta.region == "east"`})
+	if len(res.Instances) != 2 {
+		t.Fatalf("two-way AND: want 2 (a,d) got %d", len(res.Instances))
+	}
+	// Health && Meta
+	res = s.GetNow("pay", catalog.QueryOptions{Filter: `Health == "passing" && Meta.version == "v2"`})
+	if len(res.Instances) != 2 {
+		t.Fatalf("health AND meta: want 2 (a,b) got %d", len(res.Instances))
+	}
+	// three-way AND
+	res = s.GetNow("pay", catalog.QueryOptions{Filter: `Health == "passing" && Meta.version == "v2" && Meta.region == "east"`})
+	if len(res.Instances) != 1 || res.Instances[0].ID != "a" {
+		t.Fatalf("three-way AND: want [a] got %+v", res.Instances)
+	}
+}
