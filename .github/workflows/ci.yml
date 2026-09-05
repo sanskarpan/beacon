@@ -42,7 +42,7 @@ jobs:
       - name: test race (critical packages)
         run: go test -race -count=1 ./pkg/catalog ./pkg/health ./pkg/agent ./pkg/gossip ./pkg/store/raft/consensus ./pkg/xds ./pkg/mesh ./pkg/sdk ./pkg/watch
       - name: upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.out
           fail_ci_if_error: false
