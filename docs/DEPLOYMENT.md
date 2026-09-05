@@ -5,7 +5,7 @@
 ```bash
 docker compose up --build
 # or CP mode
-BEACON_CONSISTENCY=cp docker compose up
+BEACON_CONSISTENCY=cp docker compose up --build
 # console at http://localhost:3000, API at :8500, DNS at :8600
 ```
 
@@ -40,7 +40,7 @@ make build
 
 ## Persistence
 
-Agent `services.json` in `BEACON_DATA_DIR` (default `./data`, volume `agent-data` in compose). Server catalog is in-memory + gossip; CP mode persists via Raft log (in-process).
+Agent `services.json` in `BEACON_DATA_DIR` (default `./data`, volume `agent-data` in compose). AP server catalogs are in-memory and replicated by UDP gossip. CP mode uses the networked `raft-consensus` transport with one WAL/stable/snapshot directory per node. Compose supplies the static peer set automatically; bare-metal and Kubernetes deployments must provide `BEACON_RAFT_PEERS` explicitly.
 
 ## Upgrades
 

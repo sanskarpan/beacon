@@ -2,7 +2,7 @@
 
 > Priority: 🔴 blocking · 🟡 important · 🟢 enhancement · 🔵 stretch  
 > **Status:** `[x]` done · `[~]` intentionally simplified / demo-scale · `[ ]` open  
-> Last full pass: all packages green (`go test ./...`), console build clean, e2e + sim scenarios.
+> Last audited pass: Go unit/race/integration tests, console typecheck/build, real CP process recovery, UDP multi-hop, and CI all pass. Items marked `[~]` remain explicitly limited or unproven at the stated scale.
 
 ---
 
@@ -80,7 +80,7 @@
 - [x] E2E: 10-node, fail&lt;3s, partition heal, full sync
 - [x] **Gossip-disabled anti-entropy fallback test**
 - [x] WAN multi-DC pool (`pkg/gossip/wan.go`)
-- [x] 1k-node / bandwidth charts — `pkg/gossip/ologn_test.go:57` `TestConvergenceHopsScaleLogN` and `TestBandwidthPerNode1k` run 1k nodes on virtual clock (O(log N) hops, <50 KB/s); `BEACON_LONG=1` gate for soak, CI runs 10/100/1000 sweep
+- [~] 1k-node / bandwidth charts — virtual-clock transport proof is covered by `pkg/gossip/ologn_test.go`; production UDP has bounded multi-hop tests, but no 1k-process soak is claimed
 
 ---
 
@@ -91,7 +91,7 @@
 - [x] Partition minority reject; AP both-write; heal
 - [x] `docs/CONSISTENCY.md`
 - [x] Benchmark write AP vs CP (`BenchmarkWriteAPvsCP`)
-- [x] External Raft-Consensus module import — `go.mod:10` `sanskarpan/raft-consensus v0.0.0-20260729` (external Go module, `raftlib.Raft` API) — `pkg/store/raft/consensus` uses `raftlib.Configuration`/`Apply`/`ReadIndex` directly; `external/gossip-system` and `external/grpc-service` remain local `replace` stubs for SWIM/interceptors (thin adapter per `docs/INTEGRATION.md`)
+- [x] External Raft-Consensus module import and network process path — `pkg/store/raft/consensus` uses TCP transport, durable storage, and `test/integration/e2e_cp_process_test.go`; SWIM/interceptor upstream seams remain separate `[~]` items
 
 ---
 
@@ -100,7 +100,7 @@
 - [x] Registry, blocking query (jitter, future index, timeout→state)
 - [x] Cache, compaction, singleflight, staggered fan-out, herd, backpressure
 - [x] Race-safe trySend; cleanup tests
-- [x] **500 concurrent watchers** scale test
+- [~] **500 concurrent watchers** scale test; 5k/10k memory-budget proof remains open
 - [x] Watch memory benchmark
 
 ---
@@ -129,7 +129,7 @@
 - [x] UDP+TCP, A/AAAA/SRV, tags, node, passing-only, TTL=0, shuffle, TC bit
 - [x] Datacenter/node patterns
 - [x] Truncation + TCP full-set test
-- [x] DNS p99 bench — `pkg/api/dns/bench_test.go:41` `TestDNS_LatencyPercentiles` 10k queries, p99 <5ms gate (2ms target, 5ms CI headroom) runs in `go test ./...`
+- [~] DNS p99 measurement — `TestDNS_LatencyPercentiles` measures 10k queries and logs a 5ms headroom threshold; deterministic 2ms enforcement remains open
 
 ---
 
@@ -186,7 +186,7 @@
 
 - [x] TraceID, stages, 4 path configs, p50/p99/max
 - [x] Markdown + JSON export; gossip ≪ DNS tests
-- [x] Cluster size sweep (3, 10 in tests; API supports N)
+- [~] Cluster size sweep (simulation supports 3/10/100/1000; real-process production sweep remains open)
 - [x] Console chart
 
 ---
@@ -199,7 +199,7 @@
 - [x] Health inspector + hysteresis + **active vs passive** + flapping banner
 - [x] Watch herd histogram
 - [x] xDS NACK + order + SotW/Delta
-- [x] Consistency lab + LB lab
+- [~] Consistency lab + LB lab; consistency lab is live when explicitly enabled, while LB lab remains a simulation-only view
 - [x] Click-through check history / full watcher table — `HealthInspector.tsx` click row → drawer with `selectedHistory` + `WatchInspector.tsx` fetches `/v1/watch/stats` polling 2s (service/id/index + cache oldest/newest/size)
 
 ---
@@ -236,14 +236,18 @@ cd console && bun run build
 |---|---|
 | 0–8 | **complete** |
 | 9 gRPC | **complete** (live server + keepalive + drain) |
-| 10 DNS | **complete** |
+| 10 DNS | **complete with measured 5ms CI headroom; strict 2ms gate remains** |
 | 11 LB | **complete** (+ Maglev) |
 | 12 SDK | **complete** (+ balancer registry) |
 | 13 xDS | **complete** (+ bootstrap, debounce, per-EP EDS) |
 | 14 Mesh | **complete** (+ SDS, mTLS) |
 | 15 Sim | **complete** (+ YAML, rollout, zone) |
-| 16 Prop ⭐ | **complete** |
-| 17 Console | **complete** |
+| 16 Prop ⭐ | **partial: live event path exists; real-process measurement sweep remains** |
+| 17 Console | **complete for live API-backed views; LB lab remains simulated** |
 | 18 Docs/demo | **complete** (+ prepared queries, WAN, demo) |
 
-**No remaining `[~]`** — all 4 prior demo-scale items are now complete (1k-node virtual-clock soak, external Raft via `replace`, DNS p99 gate, console click-through/watcher table). `shadcn`-equivalent styling remains hand-styled Tailwind (no CLI codegen) per `docs/CONSOLE.md` — functionally complete.
+Remaining `[~]` items are deliberate and tracked in `TODO.md`: upstream
+SWIM/interceptor replacement, 1k-process gossip soak, 5k/10k watcher proof,
+strict DNS performance enforcement, real-process propagation measurement, and
+the simulated load-balancing lab. `shadcn`-equivalent styling remains
+hand-styled Tailwind (no CLI codegen) per `docs/CONSOLE.md`.

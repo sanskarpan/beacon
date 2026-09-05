@@ -1,28 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ApiError, fetchWatchStats, type WatchStats } from "../api/client";
 import { useEventStore } from "../store/events";
 
-type WatcherRow = { service: string; id: number; index: number };
 export default function WatchInspector() {
   const events = useEventStore((s) => s.events);
   const watchEvents = events.filter((e) => e.kind.startsWith("watch"));
-  const [watchers, setWatchers] = useState<WatcherRow[]>([]);
-  const [totalWatchers, setTotalWatchers] = useState<number>(0);
-  const [cacheStats, setCacheStats] = useState<{ oldest: number; newest: number; size: number } | null>(null);
+  const [stats, setStats] = useState<WatchStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | null>(null);
 
   useEffect(() => {
     let alive = true;
     const fetchStats = async () => {
       try {
-        const r = await fetch("/v1/watch/stats");
-        if (!r.ok) return;
-        const j = await r.json();
+        const next = await fetchWatchStats();
         if (!alive) return;
-        setTotalWatchers(j.total_watchers ?? 0);
-        setWatchers((j.watchers ?? []) as WatcherRow[]);
-        setCacheStats(j.cache ?? null);
-      } catch {
-        /* ignore */
+        setStats(next);
+        setError(null);
+      } catch (cause) {
+        if (alive) {
+          setError(
+            cause instanceof ApiError
+              ? cause
+              : new ApiError("Unable to load watcher stats", "/v1/watch/stats", null)
+          );
+        }
+      } finally {
+        if (alive) setLoading(false);
       }
     };
     fetchStats();
@@ -65,6 +70,12 @@ export default function WatchInspector() {
         </div>
       )}
 
+      {error && (
+        <div role="alert" className="rounded-lg border border-signal-red/40 bg-signal-red/10 px-4 py-2 text-sm text-signal-red">
+          Watcher stats unavailable: {error.message}
+        </div>
+      )}
+
       <div className="rounded-xl border border-ink-600 bg-ink-900/60 p-4 h-72">
         <div className="text-xs font-mono text-slate-500 mb-2">HERD HISTOGRAM</div>
         <ResponsiveContainer width="100%" height="90%">
@@ -79,10 +90,12 @@ export default function WatchInspector() {
 
       <div className="rounded-xl border border-ink-600 bg-ink-900/60 overflow-hidden">
         <div className="px-4 py-2 border-b border-ink-600 flex items-center justify-between">
-          <div className="text-xs font-mono text-slate-500">FULL WATCHER TABLE — {totalWatchers} open</div>
-          {cacheStats && (
+          <div className="text-xs font-mono text-slate-500">
+            FULL WATCHER TABLE — {loading ? "loading" : `${stats?.total_watchers ?? 0} open`}
+          </div>
+          {stats?.cache && stats.cache.size != null && (
             <div className="text-[10px] font-mono text-slate-600">
-              cache oldest={cacheStats.oldest} newest={cacheStats.newest} size={cacheStats.size}
+              cache oldest={stats.cache.oldest} newest={stats.cache.newest} size={stats.cache.size}
             </div>
           )}
         </div>
@@ -96,14 +109,19 @@ export default function WatchInspector() {
               </tr>
             </thead>
             <tbody>
-              {watchers.length === 0 && (
+              {!loading && stats?.watchers.length === 0 && (
                 <tr>
                   <td colSpan={3} className="px-4 py-6 text-slate-600 text-center">
                     No watchers — open via `beacon watch &lt;service&gt;` or SDK resolver
                   </td>
                 </tr>
               )}
-              {watchers.slice(0, 100).map((w) => (
+              {loading && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-6 text-slate-600 text-center">Loading live watchers…</td>
+                </tr>
+              )}
+              {stats?.watchers.slice(0, 100).map((w) => (
                 <tr key={`${w.service}-${w.id}`} className="border-t border-ink-700/40 text-slate-300">
                   <td className="px-4 py-1.5">{w.service}</td>
                   <td className="px-4 py-1.5">{w.id}</td>

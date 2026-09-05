@@ -19,13 +19,14 @@ prod-blocking code stubs and adds the missing production artifacts.
 - `external/gossip-system`, `external/grpc-service` `replace` stubs: thin local
   adapters behind `pkg/gossip.Membership` / SDK interceptor seams. Production
   path (swap to real modules) is documented in `docs/INTEGRATION.md`.
-- `pkg/api/pb/pb.go` hand-written stubs: wire-compatible JSON-codec transport
-  with live `ProtoServer` e2e (`TestProtoWire_WatchEndToEnd`). Production
-  codegen path (`buf generate`) documented in `docs/API.md`.
-- `pkg/gossip/memory.go` full-mesh fabric: in-process test/sim transport with
-  analytic `MaxHop`; real SWIM arrives via the `Membership` seam.
-- Console `ConsistencyLab`/`PropagationTimeline` fallbacks: live SSE first,
-  simulated overlay only when the control plane is unreachable (lab/demo mode).
+- `pkg/api/pb` now contains generated standard-protobuf bindings from
+  `proto/beacon/v1/beacon.proto`; `TestProtoWire_WatchEndToEnd` exercises the
+  generated wire path.
+- `pkg/gossip/memory.go` remains an in-process test/simulation transport, while
+  production AP mode uses `pkg/gossip/udp.go` with bounded multi-hop infection,
+  duplicate suppression, and anti-entropy messages.
+- Console `ConsistencyLab` and `PropagationTimeline` use live API/SSE data;
+  the synthetic consistency lab is explicitly opt-in with `--enable-lab`.
 
 ## Production artifacts added
 

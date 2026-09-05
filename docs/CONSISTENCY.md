@@ -12,6 +12,9 @@ Both backends implement the same `CatalogStore` interface. Select with `--consis
 ## CP (Raft)
 
 - Writes go to the leader, committed by quorum
+- Production `beacon-server` nodes use the external `raft-consensus` TCP
+  transport with durable WAL, stable state, and snapshots. Configure the full
+  static peer set with `BEACON_RAFT_PEERS=id=host:port,...`.
 - Linearizable reads on leader (ReadIndex); stale reads on any server with `X-Beacon-Last-Contact`
 - During partition: **minority cannot write** (and cannot linearizable-read)
 - Failure mode: registration fails entirely on the minority side (outage for new instances)

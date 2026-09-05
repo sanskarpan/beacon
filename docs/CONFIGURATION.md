@@ -14,12 +14,15 @@ All flags have env equivalents (`BEACON_*`). Flags override env.
 | `--join` | `BEACON_JOIN` | — | Seed `host:port` (SWIM) |
 | `--gossip` | `BEACON_GOSSIP` | `:7946` | UDP membership listen address |
 | `--advertise` | `BEACON_ADVERTISE_ADDR` | bind host | Address advertised to peers |
+| `--bootstrap-expect` | `BEACON_BOOTSTRAP_EXPECT` | `1` | Expected CP cluster size |
+| `--raft` | `BEACON_RAFT` | `:8300` | CP Raft TCP listen address |
+| `--raft-peers` | `BEACON_RAFT_PEERS` | — | CP peers as `id=host:port,...` |
 | `--auth-token` | `BEACON_AUTH_TOKEN` | — | Bearer token for HTTP and gRPC control planes |
 | `--tls-cert` | `BEACON_TLS_CERT` | — | Server TLS certificate |
 | `--tls-key` | `BEACON_TLS_KEY` | — | Server TLS private key |
 | `--tls-client-ca` | `BEACON_TLS_CLIENT_CA` | — | Require clients chaining to this CA |
 | `--enable-lab` | `BEACON_ENABLE_LAB` | `false` | Enable synthetic consistency lab endpoints |
-| `--data-dir` | `BEACON_DATA_DIR` | `./data` | Persist (agent) |
+| `--data-dir` | `BEACON_DATA_DIR` | `./data` | CP WAL/snapshot directory |
 | `--otel-endpoint` | `BEACON_OTEL_ENDPOINT` | — | OTLP gRPC endpoint |
 | `--version` | — | `dev` | Print version and exit |
 

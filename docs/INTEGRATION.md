@@ -18,7 +18,11 @@ type Membership interface {
 }
 ```
 
-`pkg/gossip.MemoryMembership` is the in-process fabric for tests and sim. Production wires the SWIM project behind this interface (the upstream module uses `internal/`, so a thin adapter package in that repo — or a replaceable vendor — is the integration path). In this repo `go.mod` has `replace` directives to local stubs `external/gossip-system` and `external/grpc-service` for CI; remove them when wiring the real modules.
+`pkg/gossip.MemoryMembership` is the in-process fabric for tests and sim.
+Production currently wires `pkg/gossip.UDP`, which provides bounded multi-hop
+infection and anti-entropy behind the same interface. The repository still
+contains a replaceable SWIM adapter seam, but `external/gossip-system` remains
+a local stub until the upstream module exposes a compatible public transport.
 
 **Payoff:** when SWIM declares node N dead, every instance on N is marked critical immediately (~2s vs ~15s for health checks).
 
@@ -26,7 +30,9 @@ Catalog deltas piggyback on the existing gossip stream (`Broadcast` / `OnBroadca
 
 ## gRPC-Service-with-Interceptors
 
-The interceptors project supplies auth, logging, metrics, tracing, panic recovery.
+The interceptors project supplies auth, logging, metrics, tracing, panic
+recovery. The production gRPC server now installs its server interceptor chain;
+Beacon's bearer-token and stream-drain interceptors wrap that chain.
 
 beacon adds:
 
@@ -36,10 +42,11 @@ func (c *Client) OutcomeReporter() grpc.UnaryClientInterceptor
 
 which records per-endpoint outcomes into `outlier.Detector`. Picker `Done` callbacks do the same. Applications do not know about passive health checking.
 
-## Production swap (remove local stubs)
+## Upstream integration boundary
 
 The `replace` directives in `go.mod` point at `external/gossip-system` and
-`external/grpc-service` so CI builds without network access. For production:
+`external/grpc-service` so CI builds without network access. To replace the
+local seams with upstream modules:
 
 1. Publish (or vendor) the real SWIM + interceptors modules.
 2. Implement the thin adapter: SWIM `Join/Leave/Members` → `Membership`

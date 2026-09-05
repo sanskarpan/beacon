@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +23,9 @@ import (
 	"github.com/sanskar/beacon/pkg/events"
 	"github.com/sanskar/beacon/pkg/store"
 	raftlib "github.com/sanskarpan/raft-consensus/pkg/raft"
+	"github.com/sanskarpan/raft-consensus/pkg/storage"
+	rafttransport "github.com/sanskarpan/raft-consensus/pkg/transport"
+	"go.uber.org/zap"
 )
 
 var (
@@ -168,7 +173,7 @@ func (s *bytesSnapshot) Reader() io.ReadCloser {
 	return io.NopCloser(strings.NewReader(string(s.data)))
 }
 
-// --- in-process transport + stores (mirror raft-consensus test helpers) ---
+// --- in-process transport + stores (used by unit tests and the lab) ---
 
 type chanTransport struct {
 	mu                sync.RWMutex
@@ -425,12 +430,14 @@ func (m *memSnapshotStore) Delete(string) error                    { return nil 
 
 // Node is one CP participant backed by real Raft-Consensus.
 type Node struct {
-	ID    string
-	Raft  raftlib.Raft
-	FSM   *CatalogFSM
-	trans *chanTransport
-	clk   clock.Clock
-	bus   *events.Bus
+	ID        string
+	Raft      raftlib.Raft
+	FSM       *CatalogFSM
+	trans     *chanTransport
+	inProcess bool
+	shutdown  func() error
+	clk       clock.Clock
+	bus       *events.Bus
 }
 
 // Cluster is a multi-node CP catalog cluster using Raft-Consensus.
@@ -518,12 +525,13 @@ func NewCluster(ids []string, clk clock.Clock, bus *events.Bus) (*Cluster, error
 			return nil, err
 		}
 		n := &Node{
-			ID:    b.id,
-			Raft:  b.raft,
-			FSM:   b.fsm,
-			trans: b.trans,
-			clk:   clk,
-			bus:   bus,
+			ID:        b.id,
+			Raft:      b.raft,
+			FSM:       b.fsm,
+			trans:     b.trans,
+			inProcess: true,
+			clk:       clk,
+			bus:       bus,
 		}
 		c.nodes[b.id] = n
 		registerGlobalNode(n)
@@ -536,9 +544,265 @@ func (c *Cluster) Shutdown() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, n := range c.nodes {
-		_ = n.Raft.Shutdown()
+		_ = n.Shutdown()
 		unregisterGlobalNode(n.ID)
 	}
+}
+
+// Peer describes one member of a process-backed CP cluster.
+type Peer struct {
+	ID      string
+	Address string
+}
+
+// ProcessConfig contains the explicit network and storage configuration for a
+// process-backed CP node. Peers must contain the complete initial cluster,
+// including the local node, and every process must use the same peer set.
+type ProcessConfig struct {
+	ID            string
+	ListenAddress string
+	Peers         []Peer
+	DataDir       string
+}
+
+// raftMessageHandler adapts the network transport's public message types to
+// the RPC entry points intentionally exposed by raft-consensus.
+type raftMessageHandler struct {
+	mu   sync.RWMutex
+	node raftlib.Raft
+}
+
+func (h *raftMessageHandler) setNode(node raftlib.Raft) {
+	h.mu.Lock()
+	h.node = node
+	h.mu.Unlock()
+}
+
+func (h *raftMessageHandler) getNode() raftlib.Raft {
+	h.mu.RLock()
+	node := h.node
+	h.mu.RUnlock()
+	return node
+}
+
+func (h *raftMessageHandler) HandleAppendEntries(req *rafttransport.AppendEntriesReq) *rafttransport.AppendEntriesResp {
+	n, ok := h.getNode().(interface {
+		HandleAppendEntriesRPC(*raftlib.AppendEntriesRequest) *raftlib.AppendEntriesResponse
+	})
+	if !ok {
+		return &rafttransport.AppendEntriesResp{}
+	}
+	resp := n.HandleAppendEntriesRPC(&raftlib.AppendEntriesRequest{
+		Term:         req.Term,
+		LeaderID:     raftlib.ServerID(req.LeaderID),
+		PrevLogIndex: req.PrevLogIndex,
+		PrevLogTerm:  req.PrevLogTerm,
+		Entries:      req.Entries,
+		LeaderCommit: req.LeaderCommit,
+	})
+	if resp == nil {
+		return &rafttransport.AppendEntriesResp{}
+	}
+	return &rafttransport.AppendEntriesResp{
+		Term:         resp.Term,
+		Success:      resp.Success,
+		Index:        resp.Index,
+		ConflictTerm: resp.ConflictTerm,
+	}
+}
+
+func (h *raftMessageHandler) HandleRequestVote(req *rafttransport.RequestVoteReq) *rafttransport.RequestVoteResp {
+	n, ok := h.getNode().(interface {
+		HandleRequestVoteRPC(*raftlib.RequestVoteRequest) *raftlib.RequestVoteResponse
+	})
+	if !ok {
+		return &rafttransport.RequestVoteResp{}
+	}
+	resp := n.HandleRequestVoteRPC(&raftlib.RequestVoteRequest{
+		Term:           req.Term,
+		CandidateID:    raftlib.ServerID(req.CandidateID),
+		LastLogIndex:   req.LastLogIndex,
+		LastLogTerm:    req.LastLogTerm,
+		PreVote:        req.PreVote,
+		LeaderTransfer: req.LeaderTransfer,
+	})
+	if resp == nil {
+		return &rafttransport.RequestVoteResp{}
+	}
+	return &rafttransport.RequestVoteResp{
+		Term:        resp.Term,
+		VoteGranted: resp.VoteGranted,
+		Reason:      resp.Reason,
+	}
+}
+
+func (h *raftMessageHandler) HandleInstallSnapshot(req *rafttransport.InstallSnapshotReq) *rafttransport.InstallSnapshotResp {
+	n, ok := h.getNode().(interface {
+		HandleInstallSnapshotRPC(*raftlib.InstallSnapshotRequest) *raftlib.InstallSnapshotResponse
+	})
+	if !ok {
+		return &rafttransport.InstallSnapshotResp{}
+	}
+	resp := n.HandleInstallSnapshotRPC(&raftlib.InstallSnapshotRequest{
+		Term:              req.Term,
+		LeaderID:          raftlib.ServerID(req.LeaderID),
+		LastIncludedIndex: req.LastIncludedIndex,
+		LastIncludedTerm:  req.LastIncludedTerm,
+		Offset:            req.Offset,
+		Data:              req.Data,
+		Done:              req.Done,
+	})
+	if resp == nil {
+		return &rafttransport.InstallSnapshotResp{}
+	}
+	return &rafttransport.InstallSnapshotResp{Term: resp.Term}
+}
+
+func (h *raftMessageHandler) HandleTimeoutNow(_ *rafttransport.TimeoutNowReq) *rafttransport.TimeoutNowResp {
+	if n, ok := h.getNode().(interface{ HandleTimeoutNowRPC() }); ok {
+		n.HandleTimeoutNowRPC()
+	}
+	return &rafttransport.TimeoutNowResp{}
+}
+
+// NewProcessNode creates and starts one durable, network-connected CP node.
+// Unlike NewCluster, this function does not use process-global state or forward
+// writes through an in-process registry; all Raft RPCs cross the TCP transport.
+func NewProcessNode(cfg ProcessConfig, clk clock.Clock, bus *events.Bus) (*Node, error) {
+	if cfg.ID == "" || cfg.ListenAddress == "" || cfg.DataDir == "" {
+		return nil, errors.New("consensus: process node requires id, listen address, and data directory")
+	}
+	if len(cfg.Peers) == 0 {
+		return nil, errors.New("consensus: process node requires peers")
+	}
+	servers := make([]raftlib.Server, 0, len(cfg.Peers))
+	seen := make(map[string]bool, len(cfg.Peers))
+	localFound := false
+	for _, peer := range cfg.Peers {
+		if peer.ID == "" || peer.Address == "" || seen[peer.ID] {
+			return nil, fmt.Errorf("consensus: invalid or duplicate peer %q", peer.ID)
+		}
+		seen[peer.ID] = true
+		if peer.ID == cfg.ID {
+			localFound = true
+			if peer.Address != cfg.ListenAddress {
+				return nil, fmt.Errorf("consensus: local peer address %q does not match listen address %q", peer.Address, cfg.ListenAddress)
+			}
+		}
+		servers = append(servers, raftlib.Server{
+			ID:      raftlib.ServerID(peer.ID),
+			Address: raftlib.ServerAddress(peer.Address),
+		})
+	}
+	if !localFound {
+		return nil, fmt.Errorf("consensus: local node %q is not in peers", cfg.ID)
+	}
+	if clk == nil {
+		clk = clock.New()
+	}
+
+	nodeDir := filepath.Join(cfg.DataDir, cfg.ID)
+	if err := os.MkdirAll(nodeDir, 0750); err != nil {
+		return nil, fmt.Errorf("consensus: create data directory: %w", err)
+	}
+	wal, err := storage.NewWAL(filepath.Join(nodeDir, "wal"), nil)
+	if err != nil {
+		return nil, fmt.Errorf("consensus: open WAL: %w", err)
+	}
+	stable, err := storage.NewStableStore(filepath.Join(nodeDir, "stable.db"))
+	if err != nil {
+		_ = wal.Close()
+		return nil, fmt.Errorf("consensus: open stable store: %w", err)
+	}
+	snapshots, err := storage.NewFileSnapshotStore(nodeDir, 2)
+	if err != nil {
+		_ = stable.Close()
+		_ = wal.Close()
+		return nil, fmt.Errorf("consensus: open snapshot store: %w", err)
+	}
+
+	fsm := NewCatalogFSM(clk, bus)
+	handler := &raftMessageHandler{}
+	network, err := rafttransport.NewTCPTransportWithConfig(
+		cfg.ListenAddress,
+		handler,
+		rafttransport.TCPTransportConfig{
+			Timeout:         2 * time.Second,
+			Logger:          zap.NewNop(),
+			BinaryTransport: true,
+		},
+	)
+	if err != nil {
+		_ = stable.Close()
+		_ = wal.Close()
+		return nil, fmt.Errorf("consensus: listen for raft transport: %w", err)
+	}
+	for _, peer := range cfg.Peers {
+		if peer.ID == cfg.ID {
+			continue
+		}
+		if err := network.AddPeer(raftlib.ServerID(peer.ID), raftlib.ServerAddress(peer.Address)); err != nil {
+			_ = network.Close()
+			_ = stable.Close()
+			_ = wal.Close()
+			return nil, fmt.Errorf("consensus: add peer %q: %w", peer.ID, err)
+		}
+	}
+
+	r, err := raftlib.NewRaft(&raftlib.Config{
+		LocalID:              raftlib.ServerID(cfg.ID),
+		ElectionTick:         10,
+		HeartbeatTick:        1,
+		CheckQuorum:          true,
+		InitialConfiguration: raftlib.Configuration{Servers: servers},
+	}, raftlib.ServerID(cfg.ID), wal, stable, snapshots, fsm, network)
+	if err != nil {
+		_ = network.Close()
+		_ = stable.Close()
+		_ = wal.Close()
+		return nil, fmt.Errorf("consensus: create raft: %w", err)
+	}
+	handler.setNode(r)
+	if err := r.Start(); err != nil {
+		_ = network.Close()
+		_ = stable.Close()
+		_ = wal.Close()
+		return nil, fmt.Errorf("consensus: start raft: %w", err)
+	}
+
+	n := &Node{
+		ID:   cfg.ID,
+		Raft: r,
+		FSM:  fsm,
+		clk:  clk,
+		bus:  bus,
+	}
+	var once sync.Once
+	var shutdownErr error
+	n.shutdown = func() error {
+		once.Do(func() {
+			shutdownErr = r.Shutdown()
+			if err := network.Close(); shutdownErr == nil {
+				shutdownErr = err
+			}
+			if err := stable.Close(); shutdownErr == nil {
+				shutdownErr = err
+			}
+			if err := wal.Close(); shutdownErr == nil {
+				shutdownErr = err
+			}
+		})
+		return shutdownErr
+	}
+	return n, nil
+}
+
+// Shutdown stops a process node and releases its network and durable stores.
+func (n *Node) Shutdown() error {
+	if n.shutdown != nil {
+		return n.shutdown()
+	}
+	return n.Raft.Shutdown()
 }
 
 // Node returns a node by id.
@@ -627,20 +891,22 @@ func (s *Store) propose(ctx context.Context, cmd Command) (uint64, error) {
 		}
 		// Best-effort forward to leader if in same in-process cluster (test/sim).
 		// In prod, follower returns ErrNotLeader with leader hint and client retries on leader.
-		if leaderNode := globalClusterNode(lid); leaderNode != nil && leaderNode.Raft.State() == raftlib.StateLeader {
-			b, err := json.Marshal(cmd)
-			if err != nil {
-				return 0, err
-			}
-			res, err := leaderNode.Raft.Apply(ctx, b)
-			if err == nil {
-				var out struct {
-					Index uint64 `json:"index"`
+		if s.node.inProcess {
+			if leaderNode := globalClusterNode(lid); leaderNode != nil && leaderNode.Raft.State() == raftlib.StateLeader {
+				b, err := json.Marshal(cmd)
+				if err != nil {
+					return 0, err
 				}
-				if len(res) > 0 {
-					_ = json.Unmarshal(res, &out)
+				res, err := leaderNode.Raft.Apply(ctx, b)
+				if err == nil {
+					var out struct {
+						Index uint64 `json:"index"`
+					}
+					if len(res) > 0 {
+						_ = json.Unmarshal(res, &out)
+					}
+					return out.Index, nil
 				}
-				return out.Index, nil
 			}
 		}
 		return 0, fmt.Errorf("%w: leader is %s", raftlib.ErrNotLeader, lid)

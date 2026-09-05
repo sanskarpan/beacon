@@ -118,3 +118,61 @@ func TestIncarnationConflict(t *testing.T) {
 		t.Fatal("stale overwrote")
 	}
 }
+
+func TestAntiEntropyRecoversMissedDeltaOverMembershipTransport(t *testing.T) {
+	clk := clock.NewVirtual(time.Unix(0, 0))
+	cluster := gossip.NewCluster(clk)
+	cluster.SetNetwork(gossip.NetworkConfig{Fanout: 0})
+	m0 := gossip.NewMemory(cluster, "n0", "127.0.0.1", 1)
+	m1 := gossip.NewMemory(cluster, "n1", "127.0.0.1", 2)
+	s0 := gstore.New(gstore.Config{Local: catalog.NewStore(catalog.WithClock(clk)), Membership: m0})
+	s1 := gstore.New(gstore.Config{Local: catalog.NewStore(catalog.WithClock(clk)), Membership: m1})
+
+	cluster.Partition([]string{"n0"}, []string{"n1"})
+	for i := 0; i < 2; i++ {
+		if _, err := s0.Register(context.Background(), &catalog.Instance{
+			ID: "missed-" + string(rune('0'+i)), Service: "svc", Node: "n0",
+			Address: "10.0.0.1", Port: 8000 + i, Health: catalog.HealthPassing,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cluster.Heal()
+	if _, err := s0.Register(context.Background(), &catalog.Instance{
+		ID: "observed", Service: "svc", Node: "n0", Address: "10.0.0.1",
+		Port: 8002, Health: catalog.HealthPassing,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"missed-0", "missed-1", "observed"} {
+		if _, ok := s1.GetInstance(id); !ok {
+			t.Fatalf("anti-entropy did not recover %s", id)
+		}
+	}
+	if s1.NeedsFullSync() {
+		t.Fatal("successful anti-entropy left a pending sync")
+	}
+}
+
+func TestAntiEntropyChunksOversizedDelta(t *testing.T) {
+	clk := clock.NewVirtual(time.Unix(0, 0))
+	cluster := gossip.NewCluster(clk)
+	m0 := gossip.NewMemory(cluster, "n0", "127.0.0.1", 1)
+	m1 := gossip.NewMemory(cluster, "n1", "127.0.0.1", 2)
+	s0 := gstore.New(gstore.Config{Local: catalog.NewStore(catalog.WithClock(clk)), Membership: m0})
+	s1 := gstore.New(gstore.Config{Local: catalog.NewStore(catalog.WithClock(clk)), Membership: m1})
+	meta := map[string]string{"large": string(make([]byte, 1200))}
+	if _, err := s0.Register(context.Background(), &catalog.Instance{
+		ID: "oversized", Service: "svc", Node: "n0", Address: "10.0.0.1",
+		Port: 9000, Health: catalog.HealthPassing, Meta: meta,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inst, ok := s1.GetInstance("oversized")
+	if !ok || inst.Meta["large"] != meta["large"] {
+		t.Fatal("oversized delta was not recovered through chunked anti-entropy")
+	}
+	if s0.NeedsFullSync() || s1.NeedsFullSync() {
+		t.Fatal("successful oversized-delta sync left a pending flag")
+	}
+}

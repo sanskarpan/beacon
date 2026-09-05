@@ -1,6 +1,7 @@
 package gossip
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ type MemoryMembership struct {
 	members  map[NodeID]Member
 	subs     map[chan<- MemberEvent]struct{}
 	handlers []func(from NodeID, payload []byte)
+	seen     map[string]time.Time
 	cluster  *Cluster
 	clk      clock.Clock
 	left     bool
@@ -27,6 +29,7 @@ type NetworkConfig struct {
 	Loss    float64 // 0..1
 	Fanout  int     // 0 = full mesh, else bounded infection fanout
 	Reorder bool
+	TTL     int
 }
 
 // Cluster is a shared fabric that connects MemoryMembership instances.
@@ -68,6 +71,7 @@ func NewMemory(cluster *Cluster, name, addr string, port int) *MemoryMembership 
 		},
 		members: make(map[NodeID]Member),
 		subs:    make(map[chan<- MemberEvent]struct{}),
+		seen:    make(map[string]time.Time),
 		cluster: cluster,
 		clk:     cluster.clk,
 	}
@@ -167,7 +171,12 @@ func (m *MemoryMembership) Broadcast(payload []byte) error {
 		// Callers should fall back to anti-entropy; we still deliver truncated? No — reject.
 		return ErrPayloadTooLarge
 	}
-	m.cluster.deliverBroadcast(m, payload)
+	m.cluster.deliverBroadcast(m, broadcastMessage{
+		ID:      newNonce(),
+		Origin:  m.self.ID,
+		TTL:     m.cluster.broadcastTTL(),
+		Payload: append([]byte(nil), payload...),
+	})
 	return nil
 }
 
@@ -218,13 +227,57 @@ func (m *MemoryMembership) applyMember(ev MemberEvent) {
 	}
 }
 
-func (m *MemoryMembership) handleBroadcast(from NodeID, payload []byte) {
+type broadcastMessage struct {
+	ID      string
+	Origin  NodeID
+	TTL     int
+	Hops    int
+	Payload []byte
+}
+
+func (m *MemoryMembership) handleBroadcast(msg broadcastMessage, previous NodeID) bool {
+	if !m.markSeen(msg.ID) {
+		return false
+	}
 	m.mu.RLock()
 	handlers := append([]func(NodeID, []byte){}, m.handlers...)
 	m.mu.RUnlock()
 	for _, h := range handlers {
-		h(from, payload)
+		h(msg.Origin, append([]byte(nil), msg.Payload...))
 	}
+	if msg.TTL > 1 {
+		m.cluster.forwardBroadcast(m, previous, msg)
+	}
+	return true
+}
+
+func (m *MemoryMembership) markSeen(id string) bool {
+	m.mu.Lock()
+	if _, ok := m.seen[id]; ok {
+		m.mu.Unlock()
+		return false
+	}
+	m.seen[id] = m.clk.Now()
+	if len(m.seen) > 4096 {
+		cutoff := m.clk.Now().Add(-10 * time.Minute)
+		for id, at := range m.seen {
+			if at.Before(cutoff) {
+				delete(m.seen, id)
+			}
+		}
+		for len(m.seen) > 4096 {
+			var oldestID string
+			var oldest time.Time
+			for id, at := range m.seen {
+				if oldestID == "" || at.Before(oldest) {
+					oldestID, oldest = id, at
+				}
+			}
+			delete(m.seen, oldestID)
+		}
+	}
+	m.mu.Unlock()
+	return true
 }
 
 // Partition isolates two groups: nodes in a cannot talk to nodes in b (bidirectional).
@@ -268,6 +321,10 @@ func (c *Cluster) Heal() {
 func (c *Cluster) blocked(from, to string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return c.blockedLocked(from, to)
+}
+
+func (c *Cluster) blockedLocked(from, to string) bool {
 	if m, ok := c.partition[from]; ok && m[to] {
 		return true
 	}
@@ -305,78 +362,121 @@ func (c *Cluster) MaxHop() int {
 	return c.maxHop
 }
 
-func (c *Cluster) deliverBroadcast(origin *MemoryMembership, payload []byte) {
+func (c *Cluster) broadcastTTL() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.netCfg.Fanout == 0 {
+		return 1
+	}
+	if c.netCfg.TTL > 0 {
+		return c.netCfg.TTL
+	}
+	return 16
+}
+
+func (c *Cluster) deliverBroadcast(origin *MemoryMembership, msg broadcastMessage) {
+	if !origin.markSeen(msg.ID) {
+		return
+	}
+	c.forwardBroadcast(origin, "", msg)
+}
+
+func (c *Cluster) forwardBroadcast(sender *MemoryMembership, previous NodeID, msg broadcastMessage) {
 	c.mu.RLock()
 	cfg := c.netCfg
-	targets := make([]*MemoryMembership, 0, len(c.nodes))
-	for name, n := range c.nodes {
-		if name == origin.self.Name {
-			continue
-		}
-		if c.blocked(origin.self.Name, name) {
-			continue
-		}
-		// loss — deterministic per-payload+target drop (keeps virtual-clock determinism; re-gossip in store layer provides retry)
-		if cfg.Loss > 0 {
-			h := 0
-			for _, b := range payload {
-				h = h*31 + int(b)
-			}
-			h += len(name)
-			if float64(h%100)/100.0 < cfg.Loss {
-				continue
-			}
-		}
-		targets = append(targets, n)
-	}
-	_ = cfg.Fanout
-	from := origin.self.ID
+	targets := c.broadcastTargetsLocked(sender, previous, msg, cfg.Fanout)
 	clk := c.clk
 	latency := cfg.Latency
 	reorder := cfg.Reorder
 	c.mu.RUnlock()
 	for idx, t := range targets {
 		t := t
-		delay := latency
-		if reorder {
-			if latency > 10*time.Millisecond {
-				delay = latency/2 + time.Duration(idx*7%int(latency/2+1))
-			}
-		}
-		c.mu.Lock()
-		c.sentBytes += int64(len(payload))
-		f := c.netCfg.Fanout
-		if f < 2 {
-			f = 3
-		}
-		n := len(c.nodes)
-		h := 1
-		p := f
-		for p < n {
-			h++
-			p *= f
-			if h > 20 {
-				break
-			}
-		}
-		if h > c.maxHop {
-			c.maxHop = h
-		}
-		c.mu.Unlock()
-		if delay > 0 && clk != nil {
-			clk.AfterFunc(delay, func() {
-				t.handleBroadcast(from, payload)
-				c.mu.Lock()
-				c.deliveredBytes += int64(len(payload))
-				c.mu.Unlock()
-			})
+		if cfg.Loss > 0 && c.dropped(msg.Payload, t.self.Name, cfg.Loss) {
 			continue
 		}
-		t.handleBroadcast(from, payload)
+		delay := latency
+		if reorder && latency > 10*time.Millisecond {
+			delay = latency/2 + time.Duration(idx*7%int(latency/2+1))
+		}
+		next := msg
+		next.TTL--
+		next.Hops++
 		c.mu.Lock()
-		c.deliveredBytes += int64(len(payload))
+		c.sentBytes += int64(len(msg.Payload))
 		c.mu.Unlock()
+		deliver := func() {
+			if t.handleBroadcast(next, sender.self.ID) {
+				c.recordDelivery(next)
+			}
+		}
+		if delay > 0 && clk != nil {
+			clk.AfterFunc(delay, deliver)
+		} else {
+			deliver()
+		}
 	}
+}
+
+func (c *Cluster) broadcastTargetsLocked(sender *MemoryMembership, previous NodeID, msg broadcastMessage, fanout int) []*MemoryMembership {
+	names := make([]string, 0, len(c.nodes))
+	for name := range c.nodes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if fanout == 0 {
+		out := make([]*MemoryMembership, 0, len(names))
+		for _, name := range names {
+			if name == sender.self.Name || name == string(previous) || c.blockedLocked(sender.self.Name, name) {
+				continue
+			}
+			out = append(out, c.nodes[name])
+		}
+		return out
+	}
+	if fanout < 1 {
+		fanout = 1
+	}
+	origin := 0
+	for i, name := range names {
+		if name == string(msg.Origin) {
+			origin = i
+			break
+		}
+	}
+	current := 0
+	for i, name := range names {
+		if name == sender.self.Name {
+			current = (i - origin + len(names)) % len(names)
+			break
+		}
+	}
+	out := make([]*MemoryMembership, 0, fanout)
+	for child := current*fanout + 1; child < len(names) && len(out) < fanout; child++ {
+		name := names[(origin+child)%len(names)]
+		if name == sender.self.Name || name == string(previous) || c.blockedLocked(sender.self.Name, name) {
+			continue
+		}
+		out = append(out, c.nodes[name])
+	}
+	return out
+}
+
+func (c *Cluster) dropped(payload []byte, name string, loss float64) bool {
+	h := 0
+	for _, b := range payload {
+		h = h*31 + int(b)
+	}
+	h += len(name)
+	return float64(h%100)/100.0 < loss
+}
+
+func (c *Cluster) recordDelivery(msg broadcastMessage) {
+	c.mu.Lock()
+	c.deliveredBytes += int64(len(msg.Payload))
+	if msg.Hops > c.maxHop {
+		c.maxHop = msg.Hops
+	}
+	c.mu.Unlock()
 }
 
 // ErrPayloadTooLarge is returned when a piggyback frame exceeds MaxPiggybackBytes.

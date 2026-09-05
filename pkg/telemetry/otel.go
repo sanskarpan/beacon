@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -33,6 +34,9 @@ func ResetForTest() {
 	initOnce = sync.Once{}
 	globalTracer = nil
 	otel.SetTracerProvider(tracenoop.NewTracerProvider())
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{}, propagation.Baggage{},
+	))
 }
 
 // Init sets up the global OTel provider with a simple stdout exporter.
@@ -65,6 +69,9 @@ func Init(id, serviceVersion string) {
 			sdktrace.WithResource(res),
 		)
 		otel.SetTracerProvider(tp)
+		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{}, propagation.Baggage{},
+		))
 		globalTracer = otel.Tracer("beacon")
 	})
 }

@@ -1,8 +1,9 @@
 // Package raft implements the CP catalog backend.
 //
 // This is a single-process Raft-style replicated log with leader election
-// simulation for tests and the consistency lab. Production would plug in the
-// Raft-Consensus project as the state machine; here we preserve the semantics:
+// simulation for tests and the consistency lab. The production server uses
+// pkg/store/raft/consensus for networked Raft; this backend preserves the
+// same semantics for local callers:
 //   - writes go to the leader
 //   - Apply is deterministic (no time.Now in Apply — timestamps in commands)
 //   - partition → minority rejects writes
