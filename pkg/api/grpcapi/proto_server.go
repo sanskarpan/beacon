@@ -2,9 +2,10 @@ package grpcapi
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/tls"
 	"io"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -15,39 +16,47 @@ import (
 	"github.com/sanskar/beacon/pkg/watch"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
-func init() { encoding.RegisterCodec(jsonCodec{}) }
-
-type jsonCodec struct{}
-
-func (jsonCodec) Marshal(v any) ([]byte, error)      { return json.Marshal(v) }
-func (jsonCodec) Unmarshal(data []byte, v any) error { return json.Unmarshal(data, v) }
-func (jsonCodec) Name() string                       { return "json" }
-
 // ProtoServer implements the generated pb.DiscoveryServer over real protobuf wire.
-// This is the codegen path (TODO-018); the hand-rolled Server remains for legacy tests.
+// This is the generated protobuf wire path.
 type ProtoServer struct {
 	pb.UnimplementedDiscoveryServer
-	inner    *DiscoveryServer
-	gs       *grpc.Server
-	draining atomic.Bool
-	streams  atomic.Int64
-	bus      *events.Bus
+	inner     *DiscoveryServer
+	gs        *grpc.Server
+	draining  atomic.Bool
+	streams   atomic.Int64
+	bus       *events.Bus
+	authToken string
 }
 
 // NewProtoServer builds a Discovery gRPC server registered with generated stubs.
 func NewProtoServer(st store.CatalogStore, w *watch.Registry, bus *events.Bus, unary []grpc.UnaryServerInterceptor) *ProtoServer {
+	return NewProtoServerWithAuth(st, w, bus, unary, nil, "")
+}
+
+// NewProtoServerWithTLS creates the generated protobuf server. A non-nil TLS
+// config enables encrypted gRPC transport; nil retains plaintext for local
+// development and tests.
+func NewProtoServerWithTLS(st store.CatalogStore, w *watch.Registry, bus *events.Bus, unary []grpc.UnaryServerInterceptor, tlsConfig *tls.Config) *ProtoServer {
+	return NewProtoServerWithAuth(st, w, bus, unary, tlsConfig, "")
+}
+
+// NewProtoServerWithAuth additionally requires a bearer token on every RPC
+// when authToken is non-empty. TLS should still be enabled for production so
+// credentials are not exposed on the wire.
+func NewProtoServerWithAuth(st store.CatalogStore, w *watch.Registry, bus *events.Bus, unary []grpc.UnaryServerInterceptor, tlsConfig *tls.Config, authToken string) *ProtoServer {
 	s := &ProtoServer{
-		inner: New(st, w, bus),
-		bus:   bus,
+		inner:     New(st, w, bus),
+		bus:       bus,
+		authToken: authToken,
 	}
 	opts := []grpc.ServerOption{
-		grpc.ForceServerCodec(jsonCodec{}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle:     5 * time.Minute,
 			MaxConnectionAge:      30 * time.Minute,
@@ -60,6 +69,12 @@ func NewProtoServer(st store.CatalogStore, w *watch.Registry, bus *events.Bus, u
 			PermitWithoutStream: true,
 		}),
 	}
+	if tlsConfig != nil {
+		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsConfig)))
+	}
+	if s.authToken != "" {
+		unary = append([]grpc.UnaryServerInterceptor{bearerUnary(s.authToken)}, unary...)
+	}
 	if len(unary) > 0 {
 		opts = append(opts, grpc.ChainUnaryInterceptor(unary...))
 	}
@@ -70,6 +85,9 @@ func NewProtoServer(st store.CatalogStore, w *watch.Registry, bus *events.Bus, u
 }
 
 func (s *ProtoServer) streamInterceptor(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	if s.authToken != "" && !bearerAuthorized(ss.Context(), s.authToken) {
+		return status.Error(codes.Unauthenticated, "valid bearer token required")
+	}
 	if s.draining.Load() {
 		return status.Error(codes.Unavailable, "server draining")
 	}
@@ -85,17 +103,45 @@ func (s *ProtoServer) streamInterceptor(srv any, ss grpc.ServerStream, info *grp
 	return err
 }
 
+func bearerUnary(token string) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if !bearerAuthorized(ctx, token) {
+			return nil, status.Error(codes.Unauthenticated, "valid bearer token required")
+		}
+		return handler(ctx, req)
+	}
+}
+
+func bearerAuthorized(ctx context.Context, token string) bool {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return false
+	}
+	values := md.Get("authorization")
+	if len(values) == 0 {
+		return false
+	}
+	return strings.TrimSpace(values[0]) == "Bearer "+token
+}
+
 // Serve starts serving on lis.
 func (s *ProtoServer) Serve(lis net.Listener) error { return s.gs.Serve(lis) }
 
 // GracefulStop drains then stops.
 func (s *ProtoServer) GracefulStop() {
 	s.draining.Store(true)
-	deadline := time.Now().Add(2 * time.Second)
-	for s.streams.Load() > 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		s.gs.GracefulStop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		// A client can hold a streaming RPC indefinitely. Never let process
+		// shutdown hang beyond the operator's termination budget.
+		s.gs.Stop()
 	}
-	s.gs.GracefulStop()
 }
 
 // Stop hard-stops.
@@ -215,7 +261,6 @@ func wireEvent(ev *WatchEvent) *pb.WatchEvent {
 func DialDiscovery(ctx context.Context, target string, opts ...grpc.DialOption) (pb.DiscoveryClient, *grpc.ClientConn, error) {
 	base := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(grpc.ForceCodec(encoding.GetCodec("json"))),
 	}
 	base = append(base, opts...)
 	conn, err := grpc.NewClient(target, base...)

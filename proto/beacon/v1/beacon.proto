@@ -2,10 +2,10 @@ syntax = "proto3";
 
 package beacon.v1;
 
-option go_package = "github.com/sanskar/beacon/pkg/api/grpcapi";
+option go_package = "github.com/sanskar/beacon/pkg/api/pb;pb";
 
 // Discovery is the gRPC control/data plane for beacon.
-// Hand-implemented service shapes live in pkg/api/grpcapi until codegen is wired.
+// Generated Go bindings are written to pkg/api/pb.
 service Discovery {
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc Deregister(DeregisterRequest) returns (RegisterResponse);

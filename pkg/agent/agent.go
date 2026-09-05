@@ -145,6 +145,17 @@ func New(cfg Config) *Agent {
 	a.runner.OnCriticalLong = func(id string) {
 		_ = a.Deregister(context.Background(), id)
 	}
+	a.runner.OnStatusChange = func(ctx context.Context, id string, status catalog.HealthStatus, _ string) {
+		// Remote health updates must not block local probes or consume their
+		// cancellation context after the check has completed.
+		go func() {
+			pushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			if _, err := a.client.UpdateHealth(events.ContextWithTrace(pushCtx, events.TraceFrom(ctx)), id, status); err != nil && a.bus != nil {
+				a.bus.Publish(events.Event{Kind: events.EvAntiEntropySync, Node: a.nodeName, Instance: id, Detail: "health update: " + err.Error()})
+			}
+		}()
+	}
 	_ = a.load()
 	return a
 }
@@ -384,6 +395,19 @@ func (a *Agent) load() error {
 // Stop stops health checks.
 func (a *Agent) Stop() {
 	a.runner.Stop()
+}
+
+// Shutdown stops checks and best-effort deregisters every locally owned
+// instance before process exit. The caller supplies the shutdown deadline.
+func (a *Agent) Shutdown(ctx context.Context) error {
+	a.Stop()
+	var firstErr error
+	for id := range a.Services() {
+		if err := a.Deregister(ctx, id); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // ResolveService reads a service from the control plane (or cache).

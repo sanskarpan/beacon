@@ -196,7 +196,9 @@ func (r *Runner) Storm(n int) Result {
 	defer unsub()
 	notif := 0
 	done := make(chan struct{})
+	finished := make(chan struct{})
 	go func() {
+		defer close(finished)
 		for {
 			select {
 			case ev, ok := <-ch:
@@ -229,6 +231,7 @@ func (r *Runner) Storm(n int) Result {
 	r.clk.Advance(100 * time.Millisecond)
 	time.Sleep(20 * time.Millisecond) // allow goroutines
 	close(done)
+	<-finished
 
 	res.Metrics["registrations"] = n
 	res.Metrics["notifications_or_bumps"] = notif

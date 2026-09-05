@@ -7,15 +7,16 @@ import (
 	"time"
 
 	"github.com/sanskar/beacon/pkg/api/grpcapi"
-	_ "github.com/sanskar/beacon/pkg/api/grpcapi" // ensure json codec registered
 	"github.com/sanskar/beacon/pkg/api/pb"
 	"github.com/sanskar/beacon/pkg/catalog"
 	"github.com/sanskar/beacon/pkg/events"
 	"github.com/sanskar/beacon/pkg/store"
 	"github.com/sanskar/beacon/pkg/watch"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/encoding"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -46,7 +47,6 @@ func TestProtoWire_WatchEndToEnd(t *testing.T) {
 
 	conn, err := grpc.NewClient("passthrough:///buf",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(grpc.ForceCodec(encoding.GetCodec("json"))),
 		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 			return lis.DialContext(ctx)
 		}),
@@ -111,6 +111,34 @@ func TestProtoWire_WatchEndToEnd(t *testing.T) {
 		// delta received — good
 	case <-ctx2.Done():
 		// snapshot-only is still a successful wire Watch path
+	}
+}
+
+func TestProtoServerBearerAuth(t *testing.T) {
+	cs := catalog.NewStore()
+	bus := events.NewBus(nil)
+	wr := watch.NewRegistry(cs)
+	srv := grpcapi.NewProtoServerWithAuth(store.NewMemory(cs, "ap"), wr, bus, nil, nil, "secret")
+	lis := bufconn.Listen(1 << 20)
+	go func() { _ = srv.Serve(lis) }()
+	defer srv.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := grpc.NewClient("passthrough:///auth", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+		return lis.DialContext(ctx)
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	client := pb.NewDiscoveryClient(conn)
+	if _, err := client.Resolve(ctx, &pb.ResolveRequest{Service: "svc"}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("without token: want unauthenticated, got %v", err)
+	}
+	authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer secret")
+	if _, err := client.Resolve(authCtx, &pb.ResolveRequest{Service: "svc"}); err != nil {
+		t.Fatalf("with token: %v", err)
 	}
 }
 
@@ -212,7 +240,6 @@ func TestProtoServer_RegisterResolveDeregister(t *testing.T) {
 
 	conn, err := grpc.NewClient("passthrough:///buf",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(grpc.ForceCodec(encoding.GetCodec("json"))),
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 			return lis.DialContext(ctx)
 		}),

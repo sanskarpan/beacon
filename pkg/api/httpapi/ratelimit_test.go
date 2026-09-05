@@ -43,3 +43,32 @@ func TestRateLimit429(t *testing.T) {
 		t.Fatal("missing Retry-After")
 	}
 }
+
+func TestBearerAuthProtectsControlPlaneButNotProbes(t *testing.T) {
+	s := httpapi.New(httpapi.Config{
+		Store:     store.NewMemory(catalog.NewStore(), "ap"),
+		AuthToken: "secret",
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/v1/catalog/services", nil)
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated control request: got %d", response.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/ready", nil)
+	response = httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("readiness probe: got %d", response.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/v1/catalog/services", nil)
+	request.Header.Set("Authorization", "Bearer secret")
+	response = httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("authenticated control request: got %d", response.Code)
+	}
+}

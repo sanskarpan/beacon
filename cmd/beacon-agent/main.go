@@ -22,9 +22,16 @@ import (
 
 // remoteClient talks to beacon-server over HTTP.
 type remoteClient struct {
-	base string
-	node string
-	hc   *http.Client
+	base  string
+	node  string
+	token string
+	hc    *http.Client
+}
+
+func (c *remoteClient) authenticate(req *http.Request) {
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 }
 
 func (c *remoteClient) Register(ctx context.Context, inst *catalog.Instance) (uint64, error) {
@@ -34,6 +41,7 @@ func (c *remoteClient) Register(ctx context.Context, inst *catalog.Instance) (ui
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	c.authenticate(req)
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return 0, err
@@ -50,6 +58,7 @@ func (c *remoteClient) Deregister(ctx context.Context, id string) (uint64, error
 	if err != nil {
 		return 0, err
 	}
+	c.authenticate(req)
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return 0, err
@@ -70,6 +79,7 @@ func (c *remoteClient) UpdateHealth(ctx context.Context, id string, h catalog.He
 	if err != nil {
 		return 0, err
 	}
+	c.authenticate(req)
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return 0, err
@@ -79,27 +89,43 @@ func (c *remoteClient) UpdateHealth(ctx context.Context, id string, h catalog.He
 }
 
 func (c *remoteClient) NodeServices(ctx context.Context, node string) (map[string]*catalog.Instance, error) {
-	// List via health/catalog is not node-filtered in simple API; return empty to allow agent push.
-	_ = ctx
-	_ = node
-	return map[string]*catalog.Instance{}, nil
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v1/agent/service/node/"+node, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.authenticate(req)
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("node services status %d", resp.StatusCode)
+	}
+	var services map[string]*catalog.Instance
+	if err := json.NewDecoder(resp.Body).Decode(&services); err != nil {
+		return nil, err
+	}
+	return services, nil
 }
 
 func main() {
 	var (
-		node     = flag.String("node", "agent-1", "node name")
-		server   = flag.String("server", "http://127.0.0.1:8500", "beacon-server base URL")
-		dataDir  = flag.String("data-dir", "./data/agent", "local state directory")
-		httpAddr = flag.String("http", ":8501", "agent local HTTP API")
+		node     = flag.String("node", envOr("BEACON_NODE", "agent-1"), "node name")
+		server   = flag.String("server", envOr("BEACON_SERVER_URL", "http://127.0.0.1:8500"), "beacon-server base URL")
+		dataDir  = flag.String("data-dir", envOr("BEACON_DATA_DIR", "./data/agent"), "local state directory")
+		httpAddr = flag.String("http", envOr("BEACON_AGENT_HTTP", ":8501"), "agent local HTTP API")
+		token    = flag.String("auth-token", envOr("BEACON_AUTH_TOKEN", ""), "Bearer token for control-plane requests")
 	)
 	flag.Parse()
 
 	clk := clock.New()
 	bus := events.NewBus(clk)
 	client := &remoteClient{
-		base: *server,
-		node: *node,
-		hc:   &http.Client{Timeout: 10 * time.Second},
+		base:  *server,
+		node:  *node,
+		token: *token,
+		hc:    &http.Client{Timeout: 10 * time.Second},
 	}
 	// local store for health runner updates
 	localStore := catalog.NewStore(catalog.WithClock(clk), catalog.WithBus(bus))
@@ -159,7 +185,22 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
+	ready := context.Background()
+	shutdownCtx, shutdownCancel := context.WithTimeout(ready, 10*time.Second)
+	defer shutdownCancel()
 	cancel()
-	a.Stop()
+	if err := agentSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("agent HTTP shutdown: %v", err)
+	}
+	if err := a.Shutdown(shutdownCtx); err != nil {
+		log.Printf("agent deregistration: %v", err)
+	}
 	log.Println("agent stopped")
+}
+
+func envOr(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

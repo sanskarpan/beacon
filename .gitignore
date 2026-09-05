@@ -14,6 +14,4 @@ vendor/
 .idea/
 .vscode/
 *.pb.go.bak
-pkg/api/pb/*.pb.go
-!pkg/api/pb/pb.go
 scripts/

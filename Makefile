@@ -1,4 +1,4 @@
-.PHONY: build test test-race test-integration proto console bench sim tidy lint lint-ci fmt coverage docker help clean vet govuln
+.PHONY: build test test-race test-integration proto proto-verify console bench sim tidy lint lint-ci fmt coverage docker help clean vet govuln
 
 GO ?= go
 MODULE := github.com/sanskar/beacon
@@ -52,13 +52,16 @@ coverage: ## test with coverage
 	$(GO) test ./... -coverprofile=coverage.out -covermode=atomic
 	$(GO) tool cover -func=coverage.out | tail -20
 
-proto: ## verify pb stub matches proto
-	@echo "protobuf stubs are hand-written in pkg/api/pb/pb.go; run 'make proto-verify' to check drift"
-	@echo "proto/beacon.proto -> pkg/api/pb/pb.go (hand-written, 12k lines)"
+proto: ## generate and verify protobuf bindings
+	buf lint
+	buf generate
+	git diff --exit-code -- pkg/api/pb
 
 proto-verify:
-	@echo "checking proto drift (stub vs proto)..."
-	@grep -q "service Discovery" proto/beacon.proto && grep -q "type DiscoveryClient" pkg/api/pb/pb.go && echo "ok: pb stub present"
+	buf lint
+	buf breaking --against '.git#branch=main'
+	@grep -q "type DiscoveryClient interface" pkg/api/pb/*_grpc.pb.go
+	@grep -q "type Instance struct" pkg/api/pb/*.pb.go
 
 console: ## build console
 	cd console && bun install --frozen-lockfile && bun run build

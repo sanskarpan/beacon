@@ -166,7 +166,10 @@ func (s *DiscoveryServer) WatchStream(req *WatchRequest, send func(*WatchEvent) 
 		}
 	}
 
-	ch, err := s.watch.Watch(ctx, req.Service, req.FromIndex)
+	ch, err := s.watch.WatchWithOptions(ctx, req.Service, watch.WatchOptions{
+		FromIndex: req.FromIndex,
+		Passing:   req.Passing,
+	})
 	if err != nil {
 		return err
 	}

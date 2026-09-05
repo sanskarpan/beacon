@@ -34,6 +34,9 @@ type Runner struct {
 	criticalSince map[string]time.Time
 	// onCriticalLong callback for deregistration
 	OnCriticalLong func(instanceID string)
+	// OnStatusChange is called after hysteresis changes the aggregate status.
+	// The callback runs in the check goroutine and should be non-blocking.
+	OnStatusChange func(ctx context.Context, instanceID string, status catalog.HealthStatus, output string)
 }
 
 type managedCheck struct {
@@ -231,6 +234,9 @@ func (r *Runner) runOne(ctx context.Context, mc *managedCheck) {
 	}
 
 	_, _ = r.store.UpdateCheckStatus(ctx, mc.instanceID, mc.check.ID, newStatus, output)
+	if r.OnStatusChange != nil {
+		r.OnStatusChange(ctx, mc.instanceID, newStatus, output)
+	}
 
 	// DeregisterCriticalAfter tracking — timer-based, not runOne cadence
 	if newStatus == catalog.HealthCritical {

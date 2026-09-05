@@ -47,6 +47,7 @@ type Registry struct {
 type watcher struct {
 	id      uint64
 	service string
+	passing bool
 	ch      chan Event
 	// lastIdx is written by the serve goroutine and read by Stats()
 	// under RLock — plain uint64 was a data race (#86).
@@ -56,6 +57,12 @@ type watcher struct {
 	sendMu   sync.Mutex
 	closed   bool
 	needSync atomic.Bool
+}
+
+// WatchOptions controls the initial snapshot and subsequent watch events.
+type WatchOptions struct {
+	FromIndex uint64
+	Passing   bool
 }
 
 // Option configures the registry.
@@ -89,14 +96,21 @@ func (r *Registry) Cache() *Cache { return r.cache }
 
 // Watch opens a subscription. First delivery is a snapshot; subsequent are deltas.
 func (r *Registry) Watch(ctx context.Context, service string, fromIndex uint64) (<-chan Event, error) {
+	return r.WatchWithOptions(ctx, service, WatchOptions{FromIndex: fromIndex})
+}
+
+// WatchWithOptions opens a filtered subscription. Passing is applied to both
+// the initial snapshot and events carrying endpoint lists.
+func (r *Registry) WatchWithOptions(ctx context.Context, service string, opts WatchOptions) (<-chan Event, error) {
 	//nolint:gosec // G118: cancel is stored on the watcher and invoked by remove/unsubscribe; ownership is transferred, not lost.
 	ctx, cancel := context.WithCancel(ctx)
 	w := &watcher{
 		service: service,
+		passing: opts.Passing,
 		ch:      make(chan Event, 16),
 		cancel:  cancel,
 	}
-	w.lastIdx.Store(fromIndex)
+	w.lastIdx.Store(opts.FromIndex)
 
 	r.mu.Lock()
 	w.id = r.nextID.Add(1)
@@ -107,7 +121,7 @@ func (r *Registry) Watch(ctx context.Context, service string, fromIndex uint64) 
 		r.bus.Publish(events.Event{
 			Kind:    events.EvWatchOpened,
 			Service: service,
-			Index:   fromIndex,
+			Index:   opts.FromIndex,
 		})
 	}
 
@@ -165,6 +179,7 @@ func (r *Registry) serve(ctx context.Context, w *watcher) {
 					return
 				default:
 				}
+				ev = w.filterEvent(ev)
 				if sent, closed := w.trySend(ev); closed {
 					return
 				} else if sent {
@@ -176,8 +191,12 @@ func (r *Registry) serve(ctx context.Context, w *watcher) {
 	}
 
 	// Snapshot via singleflight
-	v, err, _ := r.sf.Do("snap:"+w.service, func() (any, error) {
-		return r.store.GetNow(w.service, catalog.QueryOptions{}), nil
+	snapKey := "snap:" + w.service
+	if w.passing {
+		snapKey += ":passing"
+	}
+	v, err, _ := r.sf.Do(snapKey, func() (any, error) {
+		return r.store.GetNow(w.service, catalog.QueryOptions{Passing: w.passing}), nil
 	})
 	if err != nil {
 		return
@@ -197,6 +216,20 @@ func (r *Registry) serve(ctx context.Context, w *watcher) {
 	if sent, closed := w.trySend(ev); !closed && sent {
 		w.lastIdx.Store(res.Index)
 	}
+}
+
+func (w *watcher) filterEvent(ev Event) Event {
+	if !w.passing || len(ev.Instances) == 0 {
+		return ev
+	}
+	filtered := ev
+	filtered.Instances = make([]*catalog.Instance, 0, len(ev.Instances))
+	for _, inst := range ev.Instances {
+		if inst != nil && inst.Health == catalog.HealthPassing {
+			filtered.Instances = append(filtered.Instances, inst)
+		}
+	}
+	return filtered
 }
 
 // Notify fans out a catalog change with staggered delivery.
@@ -228,7 +261,7 @@ func (r *Registry) Notify(service string, ev Event) {
 		}
 		timestamps = append(timestamps, base.Add(delay))
 		r.clk.AfterFunc(delay, func() {
-			sent, closed := w.trySend(ev)
+			sent, closed := w.trySend(w.filterEvent(ev))
 			if closed || !sent {
 				return
 			}

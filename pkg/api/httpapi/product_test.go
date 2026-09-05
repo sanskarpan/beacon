@@ -85,7 +85,7 @@ func TestConsoleObservatoryHTTP(t *testing.T) {
 	}
 	_ = ch
 
-	srv := httpapi.New(httpapi.Config{Store: st, Watch: wr, RPS: 1e6, Burst: 1e6})
+	srv := httpapi.New(httpapi.Config{Store: st, Watch: wr, EnableLab: true, RPS: 1e6, Burst: 1e6})
 	h := srv.Handler()
 
 	// Seed call graph

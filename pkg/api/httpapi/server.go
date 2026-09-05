@@ -3,6 +3,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -41,14 +43,18 @@ type Server struct {
 	onDeregister func(id, service string, idx uint64)
 	mux          *http.ServeMux
 	// rate limit per remote addr
-	limiters   sync.Map // string -> *httpLimiterEntry
-	rps        rate.Limit
-	burst      int
-	queries    *query.Store
-	intentions *mesh.IntentionStore
-	xds        *xds.Server
-	calls      *telemetry.CallGraph
-	lab        *lab.ConsistencyLab
+	limiters    sync.Map // string -> *httpLimiterEntry
+	rps         rate.Limit
+	burst       int
+	queries     *query.Store
+	intentions  *mesh.IntentionStore
+	xds         *xds.Server
+	calls       *telemetry.CallGraph
+	lab         *lab.ConsistencyLab
+	authToken   string
+	readyCheck  func() bool
+	ready       atomic.Bool
+	maxBodySize int64
 }
 
 type httpLimiterEntry struct {
@@ -74,6 +80,10 @@ type Config struct {
 	XDS          *xds.Server
 	Calls        *telemetry.CallGraph
 	Lab          *lab.ConsistencyLab
+	EnableLab    bool
+	AuthToken    string
+	ReadyCheck   func() bool
+	MaxBodyBytes int64
 }
 
 // New creates the HTTP API.
@@ -87,6 +97,9 @@ func New(cfg Config) *Server {
 	if cfg.Burst <= 0 {
 		cfg.Burst = 100
 	}
+	if cfg.MaxBodyBytes <= 0 {
+		cfg.MaxBodyBytes = 1 << 20
+	}
 	calls := cfg.Calls
 	if calls == nil {
 		calls = telemetry.NewCallGraph(cfg.Clock, cfg.Bus, 0)
@@ -96,7 +109,7 @@ func New(cfg Config) *Server {
 		intentions = mesh.NewIntentionStore()
 	}
 	labInst := cfg.Lab
-	if labInst == nil {
+	if labInst == nil && cfg.EnableLab {
 		labInst = lab.NewConsistencyLab(cfg.Clock, cfg.Bus)
 	}
 	s := &Server{
@@ -116,13 +129,18 @@ func New(cfg Config) *Server {
 		xds:          cfg.XDS,
 		calls:        calls,
 		lab:          labInst,
+		authToken:    cfg.AuthToken,
+		readyCheck:   cfg.ReadyCheck,
+		maxBodySize:  cfg.MaxBodyBytes,
 	}
+	s.ready.Store(true)
 	s.routes()
 	return s
 }
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/agent/service/register", s.wrap(s.register))
+	s.mux.HandleFunc("/v1/agent/service/node/", s.wrap(s.nodeServices))
 	s.mux.HandleFunc("/v1/agent/service/deregister/", s.wrap(s.deregister))
 	s.mux.HandleFunc("/v1/agent/check/pass/", s.wrap(s.checkPass))
 	s.mux.HandleFunc("/v1/agent/check/warn/", s.wrap(s.checkWarn))
@@ -143,13 +161,18 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/lab/consistency", s.wrap(s.labConsistency))
 	s.mux.HandleFunc("/v1/lab/consistency/", s.wrap(s.labConsistencyAction))
 	s.mux.HandleFunc("/v1/bench/gossip-contrast", s.wrap(s.gossipContrast))
-	s.mux.HandleFunc("/v1/events", s.sse)
-	s.mux.Handle("/metrics", promhttp.Handler())
+	s.mux.HandleFunc("/v1/events", s.authenticatedSSE)
+	s.mux.Handle("/metrics", s.auth(promhttp.Handler()))
 	s.mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
 	s.mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		if !s.IsReady() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready"))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ready"))
 	})
@@ -157,6 +180,17 @@ func (s *Server) routes() {
 
 // Handler returns the root handler.
 func (s *Server) Handler() http.Handler { return s.mux }
+
+// SetReady changes readiness independently from liveness.
+func (s *Server) SetReady(ready bool) { s.ready.Store(ready) }
+
+// IsReady reports local readiness and the optional backend check.
+func (s *Server) IsReady() bool {
+	if !s.ready.Load() {
+		return false
+	}
+	return s.readyCheck == nil || s.readyCheck()
+}
 
 // ListenAndServe starts the server with Slowloris-safe timeouts.
 func (s *Server) ListenAndServe(addr string) error {
@@ -173,6 +207,10 @@ func (s *Server) ListenAndServe(addr string) error {
 
 func (s *Server) wrap(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.authorized(r) {
+			writeErr(w, http.StatusUnauthorized, "unauthorized", "valid bearer token required")
+			return
+		}
 		if !s.allow(r) {
 			w.Header().Set("Retry-After", "1")
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many requests")
@@ -180,6 +218,36 @@ func (s *Server) wrap(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+func (s *Server) authorized(r *http.Request) bool {
+	if s.authToken == "" {
+		return true
+	}
+	const prefix = "Bearer "
+	value := r.Header.Get("Authorization")
+	if len(value) <= len(prefix) || value[:len(prefix)] != prefix {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(value[len(prefix):]), []byte(s.authToken)) == 1
+}
+
+func (s *Server) auth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.authorized(r) {
+			writeErr(w, http.StatusUnauthorized, "unauthorized", "valid bearer token required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) authenticatedSSE(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "valid bearer token required")
+		return
+	}
+	s.sse(w, r)
 }
 
 func (s *Server) allow(r *http.Request) bool {
@@ -219,6 +287,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "method", "PUT required")
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxBodySize)
 	var inst catalog.Instance
 	if err := json.NewDecoder(r.Body).Decode(&inst); err != nil {
 		writeErr(w, http.StatusBadRequest, "decode", err.Error())
@@ -246,6 +315,25 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Beacon-Index", strconv.FormatUint(idx, 10))
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{"id": inst.ID, "index": idx})
+}
+
+// nodeServices returns the instances owned by one agent node for
+// authoritative agent reconciliation.
+func (s *Server) nodeServices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method", "GET required")
+		return
+	}
+	node := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/agent/service/node/"), "/")
+	if node == "" {
+		writeErr(w, http.StatusBadRequest, "node", "node is required")
+		return
+	}
+	out := make(map[string]*catalog.Instance)
+	for _, inst := range s.store.InstancesOnNode(node) {
+		out[inst.ID] = inst
+	}
+	writeJSON(w, out)
 }
 
 func (s *Server) deregister(w http.ResponseWriter, r *http.Request) {

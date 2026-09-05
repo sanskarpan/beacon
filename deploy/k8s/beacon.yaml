@@ -15,21 +15,43 @@ spec:
       containers:
         - name: server
           image: ghcr.io/sanskarpan/beacon:latest
-          args: ["./bin/beacon-server", "--http", ":8500", "--dns", ":8600", "--grpc", ":8502", "--consistency", "ap"]
-          ports: [{ containerPort: 8500 }, { containerPort: 8600 }, { containerPort: 8502 }]
-          livenessProbe: { httpGet: { path: /health, port: 8500 }, initialDelaySeconds: 10, periodSeconds: 10 }
-          readinessProbe: { httpGet: { path: /ready, port: 8500 }, initialDelaySeconds: 5, periodSeconds: 5 }
+          command: ["/bin/sh", "-c"]
+          args: ["if [ \"$POD_NAME\" = beacon-server-0 ]; then exec beacon-server --http=:8500 --dns=:8600 --grpc=:8502 --gossip=:7946 --node=$POD_NAME --advertise=$POD_NAME.beacon-server; else exec beacon-server --http=:8500 --dns=:8600 --grpc=:8502 --gossip=:7946 --node=$POD_NAME --advertise=$POD_NAME.beacon-server --join=beacon-server-0.beacon-server:7946; fi"]
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: BEACON_AUTH_TOKEN
+              valueFrom: { secretKeyRef: { name: beacon-server-auth, key: token } }
+            - name: BEACON_TLS_CERT
+              value: /tls/tls.crt
+            - name: BEACON_TLS_KEY
+              value: /tls/tls.key
+          volumeMounts:
+            - { name: tls, mountPath: /tls, readOnly: true }
+          ports:
+            - { name: http, containerPort: 8500 }
+            - { name: dns-udp, containerPort: 8600, protocol: UDP }
+            - { name: dns-tcp, containerPort: 8600, protocol: TCP }
+            - { name: grpc, containerPort: 8502 }
+            - { name: gossip, containerPort: 7946, protocol: UDP }
+          livenessProbe: { httpGet: { scheme: HTTPS, path: /health, port: 8500 }, initialDelaySeconds: 10, periodSeconds: 10 }
+          readinessProbe: { httpGet: { scheme: HTTPS, path: /ready, port: 8500 }, initialDelaySeconds: 5, periodSeconds: 5 }
           resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: "1", memory: 1Gi } }
+      volumes:
+        - { name: tls, secret: { secretName: beacon-server-tls } }
 ---
 apiVersion: v1
 kind: Service
 metadata: { name: beacon-server, namespace: beacon }
 spec:
   selector: { app: beacon-server }
+  clusterIP: None
   ports:
     - { name: http, port: 8500 }
-    - { name: dns, port: 8600, protocol: UDP }
+    - { name: dns-udp, port: 8600, protocol: UDP }
+    - { name: dns-tcp, port: 8600, protocol: TCP }
     - { name: grpc, port: 8502 }
+    - { name: gossip, port: 7946, protocol: UDP }
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -52,4 +74,4 @@ spec:
   podSelector: { matchLabels: { app: beacon-server } }
   policyTypes: [Ingress]
   ingress:
-    - ports: [{ port: 8500 }, { port: 8502 }, { port: 8600 }]
+    - ports: [{ port: 8500 }, { port: 8502 }, { port: 8600 }, { port: 7946, protocol: UDP }]

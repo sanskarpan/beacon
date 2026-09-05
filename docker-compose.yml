@@ -21,6 +21,7 @@ services:
       - "-dns=:8600"
       - "-grpc=:8502"
       - "-node=server-1"
+      - "-advertise=server-1"
       - "-consistency=ap"
     ports:
       - "8500:8500"
@@ -52,6 +53,7 @@ services:
       - "-dns=:8600"
       - "-grpc=:8502"
       - "-node=server-2"
+      - "-advertise=server-2"
       - "-consistency=ap"
       - "-join=server-1:7946"
     ports:
@@ -87,6 +89,7 @@ services:
       - "-dns=:8600"
       - "-grpc=:8502"
       - "-node=server-3"
+      - "-advertise=server-3"
       - "-consistency=ap"
       - "-join=server-1:7946"
     ports:

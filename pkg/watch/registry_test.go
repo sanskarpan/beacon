@@ -140,3 +140,30 @@ func TestStatsConcurrentWithServe(t *testing.T) {
 		}
 	}
 }
+
+func TestWatchPassingFilterAppliesToSnapshot(t *testing.T) {
+	s := catalog.NewStore()
+	_, _ = s.Register(context.Background(), &catalog.Instance{
+		ID: "passing", Service: "svc", Health: catalog.HealthPassing,
+	})
+	_, _ = s.Register(context.Background(), &catalog.Instance{
+		ID: "critical", Service: "svc", Health: catalog.HealthCritical,
+	})
+	r := watch.NewRegistry(s)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := r.WatchWithOptions(ctx, "svc", watch.WatchOptions{Passing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case ev := <-ch:
+		if len(ev.Instances) != 1 || ev.Instances[0].ID != "passing" {
+			t.Fatalf("passing snapshot: %+v", ev.Instances)
+		}
+	case <-timer.C:
+		t.Fatal("snapshot timeout")
+	}
+}
