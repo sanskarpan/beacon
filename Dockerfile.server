@@ -10,7 +10,7 @@ COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$VERSION" -o /beacon-server ./cmd/beacon-server
 
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache wget ca-certificates tini && adduser -D -u 10001 beacon
 COPY --from=build /beacon-server /usr/local/bin/beacon-server
 USER beacon
