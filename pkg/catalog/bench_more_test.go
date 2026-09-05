@@ -69,9 +69,9 @@ func TestCatalogMemoryBound(t *testing.T) {
 	}
 	runtime.GC()
 	runtime.ReadMemStats(&ms)
-	delta := ms.HeapAlloc - before
+	delta := int64(ms.HeapAlloc) - int64(before)
 	const limit = 400 * 1024 * 1024
-	if delta > limit {
+	if delta > int64(limit) {
 		t.Fatalf("catalog heap delta %d exceeds 400MB", delta)
 	}
 	t.Logf("catalog heap delta for 5k instances: %d bytes (%.1f MB)", delta, float64(delta)/1024/1024)
