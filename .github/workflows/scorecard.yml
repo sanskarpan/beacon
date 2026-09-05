@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with: { persist-credentials: false }
-      - uses: ossf/scorecard-action@v2.4.2
+      - uses: ossf/scorecard-action@v2.4.4
         # publish_results disabled: the public API endpoint flakes behind
         # retries and fails the run; SARIF upload below still surfaces
         # findings in the Security tab on every push.
