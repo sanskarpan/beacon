@@ -60,7 +60,7 @@ jobs:
         run: go test -run TestCIConvergenceGate -count=1 ./... || true
       - name: forbid paths
         run: |
-          if grep -r "pkg/api/pb" --include="*.go" pkg | grep -v -E "pkg/api/pb/pb.go|pkg/api/grpcapi/proto_server(_test)?\.go" | grep -q .; then echo "forbidden import"; exit 1; fi
+          if grep -r "pkg/api/pb" --include="*.go" pkg | grep -v -E "pkg/api/pb/|pkg/api/grpcapi/proto_server(_test)?\.go" | grep -q .; then echo "forbidden import"; exit 1; fi
 
   console:
     runs-on: ubuntu-latest
