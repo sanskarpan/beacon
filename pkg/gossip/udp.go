@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,8 @@ type UDPConfig struct {
 	ProbeInterval time.Duration
 	ProbeTimeout  time.Duration
 	FailureAfter  int
+	Fanout        int // 0 = default bounded fanout
+	TTL           int // 0 = default bounded gossip TTL
 }
 
 // UDP is a network-backed membership and bounded gossip transport. It keeps
@@ -46,6 +49,9 @@ type UDP struct {
 	lastSeen  map[NodeID]time.Time
 	subs      map[chan<- MemberEvent]struct{}
 	handlers  []func(from NodeID, payload []byte)
+	seen      map[string]time.Time
+	fanout    int
+	ttl       int
 	pending   map[string]chan bool
 	conn      *net.UDPConn
 	clk       clock.Clock
@@ -85,6 +91,12 @@ func NewUDP(cfg UDPConfig) (*UDP, error) {
 	if cfg.FailureAfter <= 0 {
 		cfg.FailureAfter = defaultFailureAfter
 	}
+	if cfg.Fanout <= 0 {
+		cfg.Fanout = 3
+	}
+	if cfg.TTL <= 0 {
+		cfg.TTL = 16
+	}
 	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(cfg.BindAddr, strconv.Itoa(cfg.Port)))
 	if err != nil {
 		return nil, fmt.Errorf("gossip: resolve bind address: %w", err)
@@ -98,6 +110,7 @@ func NewUDP(cfg UDPConfig) (*UDP, error) {
 		self:    Member{ID: NodeID(cfg.Name), Name: cfg.Name, Addr: cfg.AdvertiseAddr, Port: actual.Port, Status: StatusAlive, Meta: map[string]string{}},
 		members: make(map[NodeID]Member), peers: make(map[NodeID]*net.UDPAddr),
 		lastSeen: make(map[NodeID]time.Time), subs: make(map[chan<- MemberEvent]struct{}),
+		seen: make(map[string]time.Time), fanout: cfg.Fanout, ttl: cfg.TTL,
 		pending: make(map[string]chan bool), conn: conn, clk: cfg.Clock,
 		interval: cfg.ProbeInterval, timeout: cfg.ProbeTimeout, failAfter: cfg.FailureAfter,
 		stop: make(chan struct{}),
@@ -190,17 +203,14 @@ func (u *UDP) Broadcast(payload []byte) error {
 	if len(payload) > MaxPiggybackBytes {
 		return ErrPayloadTooLarge
 	}
-	u.mu.RLock()
-	peers := u.peerAddrsLocked()
-	from := u.self.ID
-	u.mu.RUnlock()
-	msg := udpMessage{Type: "broadcast", From: from, Payload: append([]byte(nil), payload...)}
-	for _, addr := range peers {
-		if err := u.send(addr, msg); err != nil {
-			return err
-		}
+	id := newNonce()
+	if !u.markSeen(id) {
+		return nil
 	}
-	return nil
+	return u.forwardBroadcast(udpMessage{
+		Type: "broadcast", ID: id, From: u.self.ID, Via: u.self.ID,
+		TTL: u.ttl, Payload: append([]byte(nil), payload...),
+	}, "")
 }
 
 func (u *UDP) OnBroadcast(fn func(from NodeID, payload []byte)) {
@@ -223,8 +233,12 @@ func (u *UDP) Stop() {
 
 type udpMessage struct {
 	Type    string   `json:"type"`
+	ID      string   `json:"id,omitempty"`
+	TTL     int      `json:"ttl,omitempty"`
+	Hops    int      `json:"hops,omitempty"`
 	Nonce   string   `json:"nonce,omitempty"`
 	From    NodeID   `json:"from,omitempty"`
+	Via     NodeID   `json:"via,omitempty"`
 	Node    Member   `json:"node,omitempty"`
 	Members []Member `json:"members,omitempty"`
 	Payload []byte   `json:"payload,omitempty"`
@@ -279,11 +293,17 @@ func (u *UDP) handleMessage(addr *net.UDPAddr, msg udpMessage) {
 	case "member":
 		// mergeMember above applies join/update/leave status.
 	case "broadcast":
+		if msg.ID == "" || !u.markSeen(msg.ID) {
+			return
+		}
 		u.mu.RLock()
 		handlers := append([]func(NodeID, []byte){}, u.handlers...)
 		u.mu.RUnlock()
 		for _, fn := range handlers {
 			go fn(msg.From, append([]byte(nil), msg.Payload...))
+		}
+		if msg.TTL > 1 {
+			_ = u.forwardBroadcast(msg, msg.Via)
 		}
 	}
 }
@@ -413,6 +433,116 @@ func (u *UDP) peerAddrsLocked() []*net.UDPAddr {
 		}
 	}
 	return out
+}
+
+type udpPeer struct {
+	id   NodeID
+	addr *net.UDPAddr
+}
+
+func (u *UDP) forwardBroadcast(msg udpMessage, previous NodeID) error {
+	u.mu.RLock()
+	peers := u.broadcastPeersLocked(msg, previous)
+	u.mu.RUnlock()
+	var firstErr error
+	for _, peer := range peers {
+		next := msg
+		next.TTL--
+		next.Hops++
+		next.Via = u.self.ID
+		if err := u.send(peer.addr, next); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (u *UDP) broadcastPeersLocked(msg udpMessage, previous NodeID) []udpPeer {
+	ids := make([]NodeID, 0, len(u.peers)+1)
+	for id := range u.peers {
+		ids = append(ids, id)
+	}
+	ids = append(ids, u.self.ID)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	if len(ids) == 0 {
+		return nil
+	}
+	origin := 0
+	for i, id := range ids {
+		if id == msg.From {
+			origin = i
+			break
+		}
+	}
+	current := 0
+	for i, id := range ids {
+		if id == u.self.ID {
+			current = (i - origin + len(ids)) % len(ids)
+			break
+		}
+	}
+	out := make([]udpPeer, 0, u.fanout)
+	for child := current*u.fanout + 1; child < len(ids) && len(out) < u.fanout; child++ {
+		id := ids[(origin+child)%len(ids)]
+		if id == u.self.ID || id == previous {
+			continue
+		}
+		addr := u.peers[id]
+		if addr != nil {
+			out = append(out, udpPeer{id: id, addr: addr})
+		}
+	}
+	// Membership views can lag behind one another. Fill unused slots from the
+	// remaining peers so a node that learned a new branch can continue the
+	// infection without reverting to a broadcast storm.
+	for _, id := range ids {
+		if len(out) >= u.fanout || id == u.self.ID || id == previous {
+			continue
+		}
+		addr := u.peers[id]
+		if addr == nil {
+			continue
+		}
+		already := false
+		for _, peer := range out {
+			if peer.id == id {
+				already = true
+				break
+			}
+		}
+		if !already {
+			out = append(out, udpPeer{id: id, addr: addr})
+		}
+	}
+	return out
+}
+
+func (u *UDP) markSeen(id string) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if _, ok := u.seen[id]; ok {
+		return false
+	}
+	u.seen[id] = u.clk.Now()
+	if len(u.seen) > 4096 {
+		cutoff := u.clk.Now().Add(-10 * time.Minute)
+		for seenID, at := range u.seen {
+			if at.Before(cutoff) {
+				delete(u.seen, seenID)
+			}
+		}
+		for len(u.seen) > 4096 {
+			var oldestID string
+			var oldest time.Time
+			for seenID, at := range u.seen {
+				if oldestID == "" || at.Before(oldest) {
+					oldestID, oldest = seenID, at
+				}
+			}
+			delete(u.seen, oldestID)
+		}
+	}
+	return true
 }
 
 func (u *UDP) subscribersLocked() []chan<- MemberEvent {

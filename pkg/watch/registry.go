@@ -49,6 +49,7 @@ type watcher struct {
 	service string
 	passing bool
 	ch      chan Event
+	ctx     context.Context
 	// lastIdx is written by the serve goroutine and read by Stats()
 	// under RLock — plain uint64 was a data race (#86).
 	lastIdx atomic.Uint64
@@ -57,6 +58,7 @@ type watcher struct {
 	sendMu   sync.Mutex
 	closed   bool
 	needSync atomic.Bool
+	syncing  atomic.Bool
 }
 
 // WatchOptions controls the initial snapshot and subsequent watch events.
@@ -108,6 +110,7 @@ func (r *Registry) WatchWithOptions(ctx context.Context, service string, opts Wa
 		service: service,
 		passing: opts.Passing,
 		ch:      make(chan Event, 16),
+		ctx:     ctx,
 		cancel:  cancel,
 	}
 	w.lastIdx.Store(opts.FromIndex)
@@ -143,6 +146,10 @@ func (w *watcher) trySend(ev Event) (sent, closed bool) {
 	defer w.sendMu.Unlock()
 	if w.closed {
 		return false, true
+	}
+	if w.syncing.Load() {
+		w.needSync.Store(true)
+		return false, false
 	}
 	select {
 	case w.ch <- ev:
@@ -263,6 +270,9 @@ func (r *Registry) Notify(service string, ev Event) {
 		r.clk.AfterFunc(delay, func() {
 			sent, closed := w.trySend(w.filterEvent(ev))
 			if closed || !sent {
+				if !closed {
+					r.requestResync(w)
+				}
 				return
 			}
 			if r.bus != nil {
@@ -277,6 +287,28 @@ func (r *Registry) Notify(service string, ev Event) {
 	}
 
 	r.detectHerd(service, timestamps)
+}
+
+func (r *Registry) requestResync(w *watcher) {
+	if !w.needSync.Load() || !w.syncing.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		res := r.store.GetNow(w.service, catalog.QueryOptions{Passing: w.passing})
+		ev := Event{Kind: "snapshot", Service: w.service, Instances: res.Instances, Index: res.Index}
+		w.sendMu.Lock()
+		defer w.sendMu.Unlock()
+		defer w.syncing.Store(false)
+		if w.closed {
+			return
+		}
+		for len(w.ch) > 0 {
+			<-w.ch
+		}
+		w.needSync.Store(false)
+		w.ch <- ev
+		w.lastIdx.Store(ev.Index)
+	}()
 }
 
 func (r *Registry) detectHerd(service string, ts []time.Time) {

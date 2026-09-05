@@ -72,6 +72,41 @@ func TestUDPJoinAndBroadcast(t *testing.T) {
 	}
 }
 
+func TestUDPMultiHopBroadcast(t *testing.T) {
+	a := newUDPTestNode(t, "a")
+	b := newUDPTestNode(t, "b")
+	c := newUDPTestNode(t, "c")
+	d := newUDPTestNode(t, "d")
+	if _, err := b.Join([]string{udpAddr(a)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Join([]string{udpAddr(b)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Join([]string{udpAddr(c)}); err != nil {
+		t.Fatal(err)
+	}
+	received := make(chan string, 3)
+	for _, node := range []*gossip.UDP{b, c, d} {
+		node := node
+		node.OnBroadcast(func(_ gossip.NodeID, payload []byte) { received <- node.LocalName() + ":" + string(payload) })
+	}
+	if err := a.Broadcast([]byte("multi-hop")); err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[string]int)
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	for len(seen) < 3 {
+		select {
+		case got := <-received:
+			seen[got]++
+		case <-deadline.C:
+			t.Fatalf("multi-hop broadcast reached %d/3 nodes: %v", len(seen), seen)
+		}
+	}
+}
+
 func TestUDPFailureDetection(t *testing.T) {
 	a := newUDPTestNode(t, "a")
 	b := newUDPTestNode(t, "b")

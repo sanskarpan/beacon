@@ -34,8 +34,9 @@ curl "http://localhost:8500/v1/health/service/payments?passing=true&index=10&wai
 service Discovery {
   rpc Watch(WatchRequest) returns (stream WatchEvent);
   rpc WatchMulti(stream WatchMultiRequest) returns (stream WatchEvent);
-  rpc Register(RegisterRequest) returns (RegisterResponse);
-  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+   rpc Register(RegisterRequest) returns (RegisterResponse);
+   rpc Deregister(DeregisterRequest) returns (RegisterResponse);
+   rpc Resolve(ResolveRequest) returns (ResolveResponse);
 }
 ```
 
@@ -54,12 +55,13 @@ node-1.node.beacon               A (node lookup)
 
 ## Production codegen path
 
-`pkg/api/pb/pb.go` is wire-compatible with `proto/beacon.proto` and served
-live by `grpcapi.ProtoServer` (`beacon-server --grpc :8502`). To move to
-generated stubs:
+Generated bindings in `pkg/api/pb` are produced from
+`proto/beacon/v1/beacon.proto` and served live by `grpcapi.ProtoServer`
+(`beacon-server --grpc :8502`). Regenerate and verify them with:
 
 ```bash
-buf generate --template proto/buf.gen.yaml
+buf lint
+buf generate
 git diff --exit-code pkg/api/pb/
 go test ./pkg/api/grpcapi/ -run TestProtoWire -count=1
 ```

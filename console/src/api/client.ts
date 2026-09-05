@@ -2,21 +2,90 @@ import type { Instance } from "../store/events";
 
 const BASE = "";
 
+export class ApiError extends Error {
+  readonly status: number | null;
+  readonly path: string;
+  readonly code?: string;
+
+  constructor(message: string, path: string, status: number | null, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.path = path;
+    this.status = status;
+    this.code = code;
+  }
+}
+
+type ErrorPayload = { code?: string; message?: string };
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, init);
+  } catch {
+    throw new ApiError("Unable to reach the beacon API", path, null);
+  }
+
+  if (!response.ok) {
+    let payload: ErrorPayload = {};
+    try {
+      payload = (await response.json()) as ErrorPayload;
+    } catch {
+      // Keep the HTTP status useful when the server returns a non-JSON error.
+    }
+    throw new ApiError(
+      payload.message || `Beacon API returned HTTP ${response.status}`,
+      path,
+      response.status,
+      payload.code
+    );
+  }
+
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError("Beacon API returned invalid JSON", path, response.status);
+  }
+}
+
+async function requestOk(path: string, init?: RequestInit): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, init);
+  } catch {
+    throw new ApiError("Unable to reach the beacon API", path, null);
+  }
+  if (!response.ok) {
+    let payload: ErrorPayload = {};
+    try {
+      payload = (await response.json()) as ErrorPayload;
+    } catch {
+      // Keep the HTTP status useful when the server returns a non-JSON error.
+    }
+    throw new ApiError(
+      payload.message || `Beacon API returned HTTP ${response.status}`,
+      path,
+      response.status,
+      payload.code
+    );
+  }
+}
+
 export async function listServices(): Promise<Record<string, string[]>> {
-  const r = await fetch(`${BASE}/v1/catalog/services`);
-  if (!r.ok) return {};
-  return r.json();
+  return request<Record<string, string[]>>("/v1/catalog/services");
 }
 
 export async function listInstances(name: string, passing = false): Promise<Instance[]> {
   const q = passing ? "?passing=true" : "";
-  const r = await fetch(`${BASE}/v1/health/service/${encodeURIComponent(name)}${q}`);
-  if (!r.ok) return [];
-  return r.json();
+  return request<Instance[]>(`/v1/health/service/${encodeURIComponent(name)}${q}`);
 }
 
-export async function register(inst: Partial<Instance> & { service: string; port: number }) {
-  const r = await fetch(`${BASE}/v1/agent/service/register`, {
+export type RegisterResponse = { id: string; index: number };
+
+export async function register(
+  inst: Partial<Instance> & { service: string; port: number }
+): Promise<RegisterResponse> {
+  return request<RegisterResponse>("/v1/agent/service/register", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -30,14 +99,10 @@ export async function register(inst: Partial<Instance> & { service: string; port
       tags: inst.tags || [],
     }),
   });
-  return r.ok;
 }
 
-export async function deregister(id: string) {
-  const r = await fetch(`${BASE}/v1/agent/service/deregister/${encodeURIComponent(id)}`, {
-    method: "PUT",
-  });
-  return r.ok;
+export async function deregister(id: string): Promise<void> {
+  return requestOk(`/v1/agent/service/deregister/${encodeURIComponent(id)}`, { method: "PUT" });
 }
 
 export function connectSSE(onEvent: (ev: unknown) => void, onStatus: (ok: boolean) => void) {
@@ -109,34 +174,50 @@ export type ConsistencyStatus = {
   cp_index_minority: number;
 };
 
-async function getJSON<T>(path: string): Promise<T | null> {
-  try {
-    const r = await fetch(`${BASE}${path}`);
-    if (!r.ok) return null;
-    return (await r.json()) as T;
-  } catch {
-    return null;
-  }
+export function fetchCallEdges(): Promise<CallEdge[]> {
+  return request<CallEdge[]>("/v1/telemetry/calls");
 }
 
-export function fetchCallEdges(): Promise<CallEdge[] | null> {
-  return getJSON<CallEdge[]>("/v1/telemetry/calls");
+export function fetchWatchStats(): Promise<WatchStats> {
+  return request<WatchStats>("/v1/watch/stats");
 }
 
-export function fetchWatchStats(): Promise<WatchStats | null> {
-  return getJSON<WatchStats>("/v1/watch/stats");
+export function fetchConsistency(): Promise<ConsistencyStatus> {
+  return request<ConsistencyStatus>("/v1/lab/consistency");
 }
 
-export function fetchConsistency(): Promise<ConsistencyStatus | null> {
-  return getJSON<ConsistencyStatus>("/v1/lab/consistency");
+export type GossipContrast = {
+  gossip_on_p50: number;
+  gossip_on_p99: number;
+  gossip_off_p50: number;
+  gossip_off_p99: number;
+  slowdown_p50: number;
+  slowdown_p99: number;
+  samples: number;
+  nodes: number;
+  ae_interval: number;
+  note: string;
+};
+
+export type XDSStatus = {
+  configured: boolean;
+  nodes: string[];
+  count?: number;
+  detail?: string;
+  node?: string;
+  found?: boolean;
+  version?: string;
+  resources?: Record<string, unknown[]>;
+};
+
+export function fetchGossipContrast(): Promise<GossipContrast> {
+  return request<GossipContrast>("/v1/bench/gossip-contrast");
 }
 
-export async function labAction(action: "partition" | "heal"): Promise<ConsistencyStatus | null> {
-  try {
-    const r = await fetch(`${BASE}/v1/lab/consistency/${action}`, { method: "POST" });
-    if (!r.ok) return null;
-    return (await r.json()) as ConsistencyStatus;
-  } catch {
-    return null;
-  }
+export function fetchXDSStatus(): Promise<XDSStatus> {
+  return request<XDSStatus>("/v1/xds/status");
+}
+
+export function labAction(action: "partition" | "heal"): Promise<ConsistencyStatus> {
+  return request<ConsistencyStatus>(`/v1/lab/consistency/${action}`, { method: "POST" });
 }

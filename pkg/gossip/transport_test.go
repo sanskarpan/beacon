@@ -186,6 +186,69 @@ func TestTransportReorder(t *testing.T) {
 	}
 }
 
+func TestTransportBoundedFanoutAndDuplicateSuppression(t *testing.T) {
+	clk := clock.NewVirtual(time.Unix(0, 0).UTC())
+	cluster := NewCluster(clk)
+	cluster.SetNetwork(NetworkConfig{Fanout: 2, TTL: 8})
+	nodes := make([]*MemoryMembership, 7)
+	received := make([]int, len(nodes))
+	for i := range nodes {
+		nodes[i] = NewMemory(cluster, "n"+itoa(i), "127.0.0.1", 12000+i)
+		idx := i
+		nodes[i].OnBroadcast(func(NodeID, []byte) { received[idx]++ })
+	}
+	payload := []byte("bounded")
+	if err := nodes[0].Broadcast(payload); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(time.Second)
+	for i := 1; i < len(nodes); i++ {
+		if received[i] != 1 {
+			t.Fatalf("node %d received %d copies, want 1", i, received[i])
+		}
+	}
+	if received[0] != 0 {
+		t.Fatalf("origin received %d copies", received[0])
+	}
+	if got, want := cluster.SentBytes(), int64(len(payload)*(len(nodes)-1)); got != want {
+		t.Fatalf("bounded fanout sent %d bytes, want %d", got, want)
+	}
+
+	msg := broadcastMessage{ID: "duplicate", Origin: "n0", TTL: 1, Payload: []byte("x")}
+	if !nodes[1].handleBroadcast(msg, "n0") {
+		t.Fatal("first delivery was suppressed")
+	}
+	if nodes[1].handleBroadcast(msg, "n0") {
+		t.Fatal("duplicate delivery was not suppressed")
+	}
+	if received[1] != 2 {
+		t.Fatalf("duplicate reached handler %d times, want one additional delivery", received[1])
+	}
+}
+
+func TestTransportTTLBoundsInfection(t *testing.T) {
+	clk := clock.NewVirtual(time.Unix(0, 0).UTC())
+	cluster := NewCluster(clk)
+	cluster.SetNetwork(NetworkConfig{Fanout: 2, TTL: 2})
+	nodes := make([]*MemoryMembership, 6)
+	received := make([]int, len(nodes))
+	for i := range nodes {
+		nodes[i] = NewMemory(cluster, "n"+itoa(i), "127.0.0.1", 13000+i)
+		idx := i
+		nodes[i].OnBroadcast(func(NodeID, []byte) { received[idx]++ })
+	}
+	_ = nodes[0].Broadcast([]byte("ttl"))
+	clk.Advance(time.Second)
+	if received[1] == 0 || received[2] == 0 {
+		t.Fatal("TTL=2 did not deliver the first infection hop")
+	}
+	for i := 3; i < len(nodes); i++ {
+		if received[i] != 0 {
+			t.Fatalf("node %d received beyond TTL: %d", i, received[i])
+		}
+	}
+}
+
 func itoa(i int) string {
 	if i == 0 {
 		return "0"

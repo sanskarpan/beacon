@@ -1,19 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchConsistency, labAction, type ConsistencyStatus } from "../api/client";
+import { ApiError, fetchConsistency, labAction, type ConsistencyStatus } from "../api/client";
 
 export default function ConsistencyLab() {
   const [live, setLive] = useState<ConsistencyStatus | null>(null);
-  const [liveOk, setLiveOk] = useState(false);
-  const [simulatedPartitioned, setSimulatedPartitioned] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
 
   const refresh = useCallback(async () => {
-    const st = await fetchConsistency();
-    if (st) {
+    try {
+      const st = await fetchConsistency();
       setLive(st);
-      setLiveOk(true);
-    } else {
-      setLive(null);
-      setLiveOk(false);
+      setError(null);
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError
+          ? cause
+          : new ApiError("Unable to load consistency status", "/v1/lab/consistency", null)
+      );
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -24,32 +30,35 @@ export default function ConsistencyLab() {
   }, [refresh]);
 
   const toggle = async () => {
-    const next = live?.partitioned ? "heal" : "partition";
-    const st = await labAction(next);
-    if (st) {
+    if (!live) return;
+    setBusy(true);
+    try {
+      const st = await labAction(live.partitioned ? "heal" : "partition");
       setLive(st);
-      setLiveOk(true);
-    } else {
-      setSimulatedPartitioned((p) => !p);
-      setLiveOk(false);
+      setError(null);
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError
+          ? cause
+          : new ApiError("Unable to change consistency partition", "/v1/lab/consistency", null)
+      );
+    } finally {
+      setBusy(false);
     }
   };
 
-  // Live backend when /v1/lab/consistency is configured; otherwise fall back
-  // to the simulated overlay (lab/demo mode without a wired ConsistencyLab).
-  const partitioned = live?.partitioned ?? simulatedPartitioned;
-  const apA = live?.ap_a_instances ?? (partitioned ? 5 : 4);
-  const apB = live?.ap_b_instances ?? (partitioned ? 3 : 4);
-  const divergence = live?.divergence ?? Math.abs(apA - apB);
+  const partitioned = live?.partitioned ?? false;
+  const apA = live?.ap_a_instances ?? 0;
+  const apB = live?.ap_b_instances ?? 0;
+  const divergence = live?.divergence ?? 0;
   const cpMinorityWrite =
     live != null
       ? live.cp_minority_ok
         ? "OK"
         : `REJECTED (${live.cp_minority_msg || "no quorum"})`
-      : partitioned
-        ? "REJECTED (no quorum)"
-        : "OK";
-  const apWrite = live?.ap_write_note ?? "ACCEPTED both sides";
+      : "—";
+  const cpMajorityWrite = live?.cp_majority_ok ? "OK" : live ? "REJECTED" : "—";
+  const apWrite = live?.ap_write_note ?? "—";
 
   return (
     <div className="space-y-4">
@@ -63,15 +72,27 @@ export default function ConsistencyLab() {
         </div>
         <button
           onClick={toggle}
+          disabled={!live || busy || loading}
           className={`px-4 py-2 rounded-md border text-sm font-medium ${
             partitioned
               ? "border-signal-red/50 bg-signal-red/15 text-signal-red"
               : "border-signal-green/40 bg-signal-green/10 text-signal-green"
           }`}
         >
-          {partitioned ? "Partition ON — click to heal" : "Partition OFF — click to split"}
+          {loading ? "Loading live state…" : busy ? "Updating…" : live ? partitioned ? "Partition ON — click to heal" : "Partition OFF — click to split" : "Partition unavailable"}
         </button>
       </div>
+
+      {error && (
+        <div role="alert" className="rounded-lg border border-signal-red/40 bg-signal-red/10 px-4 py-2 text-sm text-signal-red">
+          Consistency API unavailable: {error.message}
+        </div>
+      )}
+      {!live && !loading && (
+        <div role="status" className="rounded-xl border border-ink-600 bg-ink-900/60 p-6 text-center text-sm text-slate-500">
+          No live consistency snapshot is available. Enable the consistency lab on the beacon server.
+        </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-4">
         <div className="rounded-xl border border-ink-600 bg-ink-900/60 p-4">
@@ -97,13 +118,13 @@ export default function ConsistencyLab() {
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg bg-ink-800 p-3">
               <div className="text-xs text-slate-500">Majority writes</div>
-              <div className="text-xl font-mono text-signal-green">OK</div>
+              <div className={`text-xl font-mono ${cpMajorityWrite === "OK" ? "text-signal-green" : "text-signal-red"}`}>{cpMajorityWrite}</div>
             </div>
             <div className="rounded-lg bg-ink-800 p-3">
               <div className="text-xs text-slate-500">Minority writes</div>
               <div
                 className={`text-xl font-mono ${
-                  partitioned ? "text-signal-red" : "text-signal-green"
+                  cpMinorityWrite.startsWith("REJECTED") ? "text-signal-red" : "text-signal-green"
                 }`}
               >
                 {cpMinorityWrite}

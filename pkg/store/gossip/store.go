@@ -8,6 +8,8 @@ package gossip
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -32,6 +34,28 @@ type Delta struct {
 	OriginAt time.Time `json:"origin_at,omitempty"`
 }
 
+type antiEntropyMessage struct {
+	Kind      string        `json:"kind"`
+	ID        string        `json:"id"`
+	Requester gossip.NodeID `json:"requester,omitempty"`
+	Provider  gossip.NodeID `json:"provider,omitempty"`
+	Root      string        `json:"root,omitempty"`
+	Count     int           `json:"count,omitempty"`
+	Seq       int           `json:"seq,omitempty"`
+	Total     int           `json:"total,omitempty"`
+	Data      []byte        `json:"data,omitempty"`
+}
+
+type antiEntropyState struct {
+	Instances  []*catalog.Instance `json:"instances"`
+	Tombstones map[string]uint64   `json:"tombstones,omitempty"`
+}
+
+type antiEntropyTransfer struct {
+	total  int
+	chunks map[int][]byte
+}
+
 // Store is the AP gossip-replicated catalog.
 type Store struct {
 	mu          sync.Mutex
@@ -48,6 +72,11 @@ type Store struct {
 	self     string
 	// pending full-state digests for anti-entropy overflow
 	pendingFull  bool
+	lastIndex    map[gossip.NodeID]uint64
+	pullID       string
+	fetchSent    bool
+	transfers    map[string]*antiEntropyTransfer
+	aeSeq        uint64
 	stopCh       chan struct{}
 	membershipCh chan gossip.MemberEvent
 }
@@ -79,6 +108,8 @@ func New(cfg Config) *Store {
 		self:         cfg.Membership.LocalName(),
 		stopCh:       make(chan struct{}),
 		membershipCh: make(chan gossip.MemberEvent, 64),
+		lastIndex:    make(map[gossip.NodeID]uint64),
+		transfers:    make(map[string]*antiEntropyTransfer),
 	}
 	cfg.Membership.OnBroadcast(s.onBroadcast)
 	cfg.Membership.Subscribe(s.membershipCh)
@@ -320,7 +351,6 @@ func (s *Store) broadcast(d Delta) {
 		return
 	}
 	if len(payload) > gossip.MaxPiggybackBytes {
-		// overflow → anti-entropy path (not silently dropped)
 		s.mu.Lock()
 		s.pendingFull = true
 		s.mu.Unlock()
@@ -332,8 +362,10 @@ func (s *Store) broadcast(d Delta) {
 				Meta:   map[string]any{"trace_id": d.TraceID, "instance": d.InstanceID},
 			})
 		}
+		s.announceAntiEntropy()
 		return
 	}
+	s.noteLocalIndex(d)
 	_ = s.membership.Broadcast(payload)
 }
 
@@ -344,7 +376,7 @@ func (s *Store) NeedsFullSync() bool {
 	return s.pendingFull
 }
 
-// ClearPendingFull clears the overflow flag after a successful FullSync/MerkleSync.
+// ClearPendingFull clears the overflow flag after a successful anti-entropy sync.
 func (s *Store) ClearPendingFull() {
 	s.mu.Lock()
 	s.pendingFull = false
@@ -352,12 +384,284 @@ func (s *Store) ClearPendingFull() {
 }
 
 func (s *Store) onBroadcast(from gossip.NodeID, payload []byte) {
+	var ae antiEntropyMessage
+	if err := json.Unmarshal(payload, &ae); err == nil && ae.Kind != "" {
+		s.handleAntiEntropy(from, ae)
+		return
+	}
 	var d Delta
 	if err := json.Unmarshal(payload, &d); err != nil {
 		return
 	}
-	_ = from
+	s.noteRemoteIndex(d)
 	s.ApplyDelta(d)
+}
+
+func (s *Store) noteLocalIndex(d Delta) {
+	if d.Origin == "" || d.Index == 0 {
+		return
+	}
+	s.mu.Lock()
+	if d.Index > s.lastIndex[d.Origin] {
+		s.lastIndex[d.Origin] = d.Index
+	}
+	s.mu.Unlock()
+}
+
+func (s *Store) noteRemoteIndex(d Delta) {
+	if d.Origin == "" || d.Index == 0 {
+		return
+	}
+	s.mu.Lock()
+	last := s.lastIndex[d.Origin]
+	if d.Index > s.lastIndex[d.Origin] {
+		s.lastIndex[d.Origin] = d.Index
+	}
+	gap := (last == 0 && d.Index > 1) || d.Index > last+1
+	s.mu.Unlock()
+	if gap {
+		s.requestAntiEntropy()
+	}
+}
+
+func (s *Store) nextAntiEntropyID() string {
+	s.mu.Lock()
+	s.aeSeq++
+	id := fmt.Sprintf("%s/ae/%d", s.self, s.aeSeq)
+	s.mu.Unlock()
+	return id
+}
+
+func (s *Store) requestAntiEntropy() {
+	s.mu.Lock()
+	if s.pullID != "" {
+		s.mu.Unlock()
+		return
+	}
+	s.aeSeq++
+	id := fmt.Sprintf("%s/pull/%d", s.self, s.aeSeq)
+	s.pullID = id
+	s.fetchSent = false
+	s.pendingFull = true
+	s.mu.Unlock()
+	if !s.sendAntiEntropy(antiEntropyMessage{Kind: "ae_request", ID: id, Requester: gossip.NodeID(s.self)}) {
+		s.mu.Lock()
+		if s.pullID == id {
+			s.pullID = ""
+		}
+		s.mu.Unlock()
+	}
+}
+
+func (s *Store) announceAntiEntropy() {
+	d := s.BuildDigest(false)
+	_ = s.sendAntiEntropy(antiEntropyMessage{
+		Kind: "ae_announce", ID: s.nextAntiEntropyID(), Provider: gossip.NodeID(s.self),
+		Root: d.Root, Count: d.Count,
+	})
+}
+
+func (s *Store) sendAntiEntropy(msg antiEntropyMessage) bool {
+	payload, err := json.Marshal(msg)
+	if err != nil || len(payload) > gossip.MaxPiggybackBytes {
+		return false
+	}
+	return s.membership.Broadcast(payload) == nil
+}
+
+func (s *Store) handleAntiEntropy(from gossip.NodeID, msg antiEntropyMessage) {
+	_ = from
+	switch msg.Kind {
+	case "ae_request":
+		if msg.Requester == gossip.NodeID(s.self) {
+			return
+		}
+		if !s.isAntiEntropyProvider(msg.Requester) {
+			return
+		}
+		d := s.BuildDigest(false)
+		_ = s.sendAntiEntropy(antiEntropyMessage{
+			Kind: "ae_digest", ID: msg.ID, Requester: msg.Requester,
+			Provider: gossip.NodeID(s.self), Root: d.Root, Count: d.Count,
+		})
+	case "ae_announce":
+		if msg.Provider == gossip.NodeID(s.self) {
+			return
+		}
+		local := s.BuildDigest(false)
+		if local.Root == msg.Root && local.Count == msg.Count {
+			return
+		}
+		s.mu.Lock()
+		s.pendingFull = true
+		s.mu.Unlock()
+		_ = s.sendAntiEntropy(antiEntropyMessage{
+			Kind: "ae_fetch", ID: msg.ID + "/" + s.self,
+			Requester: gossip.NodeID(s.self), Provider: msg.Provider,
+		})
+	case "ae_digest":
+		if msg.Requester != gossip.NodeID(s.self) || msg.Provider == gossip.NodeID(s.self) {
+			return
+		}
+		d := s.BuildDigest(false)
+		if d.Root == msg.Root && d.Count == msg.Count {
+			s.finishPull(msg.ID)
+			return
+		}
+		s.mu.Lock()
+		if s.pullID != msg.ID || s.fetchSent {
+			s.mu.Unlock()
+			return
+		}
+		s.fetchSent = true
+		s.mu.Unlock()
+		_ = s.sendAntiEntropy(antiEntropyMessage{
+			Kind: "ae_fetch", ID: msg.ID + "/" + s.self,
+			Requester: gossip.NodeID(s.self), Provider: msg.Provider,
+		})
+	case "ae_fetch":
+		if msg.Provider != gossip.NodeID(s.self) || msg.Requester == "" {
+			return
+		}
+		s.sendAntiEntropyState(msg.ID, msg.Requester)
+	case "ae_chunk":
+		if msg.Requester != gossip.NodeID(s.self) || msg.Total <= 0 || msg.Seq < 0 || msg.Seq >= msg.Total {
+			return
+		}
+		s.receiveAntiEntropyChunk(msg)
+	}
+}
+
+func (s *Store) isAntiEntropyProvider(requester gossip.NodeID) bool {
+	ids := make([]gossip.NodeID, 0)
+	for _, member := range s.membership.Members() {
+		if member.ID != "" && member.ID != requester && member.Status != gossip.StatusFailed && member.Status != gossip.StatusLeft {
+			ids = append(ids, member.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return true
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids[0] == gossip.NodeID(s.self)
+}
+
+func (s *Store) finishPull(id string) {
+	s.mu.Lock()
+	if s.pullID == id {
+		s.pullID = ""
+		s.fetchSent = false
+		s.pendingFull = false
+	}
+	s.mu.Unlock()
+}
+
+func (s *Store) sendAntiEntropyState(id string, requester gossip.NodeID) {
+	snap := s.local.Snapshot()
+	instances := make([]*catalog.Instance, 0, len(snap.Instances))
+	for _, inst := range snap.Instances {
+		if inst != nil {
+			instances = append(instances, inst.Clone())
+		}
+	}
+	sort.Slice(instances, func(i, j int) bool { return instances[i].ID < instances[j].ID })
+	s.mu.Lock()
+	tombstones := make(map[string]uint64, len(s.tombstones))
+	for k, v := range s.tombstones {
+		tombstones[k] = v
+	}
+	s.mu.Unlock()
+	raw, err := json.Marshal(antiEntropyState{Instances: instances, Tombstones: tombstones})
+	if err != nil {
+		return
+	}
+	const chunkBytes = 192
+	total := (len(raw) + chunkBytes - 1) / chunkBytes
+	if total == 0 {
+		total = 1
+	}
+	for seq := 0; seq < total; seq++ {
+		start := seq * chunkBytes
+		end := start + chunkBytes
+		if end > len(raw) {
+			end = len(raw)
+		}
+		if !s.sendAntiEntropy(antiEntropyMessage{
+			Kind: "ae_chunk", ID: id, Requester: requester,
+			Provider: gossip.NodeID(s.self), Seq: seq, Total: total,
+			Data: raw[start:end],
+		}) {
+			return
+		}
+	}
+	s.ClearPendingFull()
+}
+
+func (s *Store) receiveAntiEntropyChunk(msg antiEntropyMessage) {
+	s.mu.Lock()
+	transfer := s.transfers[msg.ID]
+	if transfer == nil {
+		transfer = &antiEntropyTransfer{total: msg.Total, chunks: make(map[int][]byte, msg.Total)}
+		s.transfers[msg.ID] = transfer
+	}
+	if transfer.total != msg.Total {
+		s.mu.Unlock()
+		return
+	}
+	if _, exists := transfer.chunks[msg.Seq]; exists {
+		s.mu.Unlock()
+		return
+	}
+	transfer.chunks[msg.Seq] = append([]byte(nil), msg.Data...)
+	if len(transfer.chunks) != transfer.total {
+		s.mu.Unlock()
+		return
+	}
+	raw := make([]byte, 0)
+	for seq := 0; seq < transfer.total; seq++ {
+		chunk, ok := transfer.chunks[seq]
+		if !ok {
+			s.mu.Unlock()
+			return
+		}
+		raw = append(raw, chunk...)
+	}
+	delete(s.transfers, msg.ID)
+	if s.pullID != "" {
+		s.pullID = ""
+		s.fetchSent = false
+	}
+	s.mu.Unlock()
+	var state antiEntropyState
+	if json.Unmarshal(raw, &state) != nil {
+		return
+	}
+	s.applyAntiEntropyState(state)
+	s.ClearPendingFull()
+}
+
+func (s *Store) applyAntiEntropyState(state antiEntropyState) {
+	for _, inst := range state.Instances {
+		if inst == nil {
+			continue
+		}
+		s.ApplyDelta(Delta{
+			Type: gossip.DeltaRegister, Instance: inst.Clone(), InstanceID: inst.ID,
+			Incarnation: inst.Incarnation, Index: inst.ModifyIndex, Health: inst.Health,
+		})
+	}
+	ids := make([]string, 0, len(state.Tombstones))
+	for id := range state.Tombstones {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		inst, _ := s.local.GetInstance(id)
+		s.ApplyDelta(Delta{
+			Type: gossip.DeltaDeregister, Instance: inst, InstanceID: id,
+			Incarnation: state.Tombstones[id],
+		})
+	}
 }
 
 // watchMembership: node failure → all instances on that node critical immediately.
@@ -398,6 +702,10 @@ func (s *Store) watchMembership() {
 				if s.bus != nil {
 					s.bus.Publish(events.Event{Kind: events.EvNodeJoined, Node: ev.Node.Name})
 				}
+				// A join alone does not prove that a catalog gap exists. Triggering
+				// a synchronous full-state exchange here can recursively flood the
+				// in-memory transport during large cluster formation; gaps and
+				// oversized deltas request anti-entropy explicitly below.
 			}
 		}
 	}

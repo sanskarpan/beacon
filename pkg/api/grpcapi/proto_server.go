@@ -37,20 +37,26 @@ type ProtoServer struct {
 
 // NewProtoServer builds a Discovery gRPC server registered with generated stubs.
 func NewProtoServer(st store.CatalogStore, w *watch.Registry, bus *events.Bus, unary []grpc.UnaryServerInterceptor) *ProtoServer {
-	return NewProtoServerWithAuth(st, w, bus, unary, nil, "")
+	return NewProtoServerWithInterceptors(st, w, bus, unary, nil, nil, "")
 }
 
 // NewProtoServerWithTLS creates the generated protobuf server. A non-nil TLS
 // config enables encrypted gRPC transport; nil retains plaintext for local
 // development and tests.
 func NewProtoServerWithTLS(st store.CatalogStore, w *watch.Registry, bus *events.Bus, unary []grpc.UnaryServerInterceptor, tlsConfig *tls.Config) *ProtoServer {
-	return NewProtoServerWithAuth(st, w, bus, unary, tlsConfig, "")
+	return NewProtoServerWithInterceptors(st, w, bus, unary, nil, tlsConfig, "")
 }
 
 // NewProtoServerWithAuth additionally requires a bearer token on every RPC
 // when authToken is non-empty. TLS should still be enabled for production so
 // credentials are not exposed on the wire.
 func NewProtoServerWithAuth(st store.CatalogStore, w *watch.Registry, bus *events.Bus, unary []grpc.UnaryServerInterceptor, tlsConfig *tls.Config, authToken string) *ProtoServer {
+	return NewProtoServerWithInterceptors(st, w, bus, unary, nil, tlsConfig, authToken)
+}
+
+// NewProtoServerWithInterceptors builds the generated server with optional
+// external unary and stream interceptor chains.
+func NewProtoServerWithInterceptors(st store.CatalogStore, w *watch.Registry, bus *events.Bus, unary []grpc.UnaryServerInterceptor, stream []grpc.StreamServerInterceptor, tlsConfig *tls.Config, authToken string) *ProtoServer {
 	s := &ProtoServer{
 		inner:     New(st, w, bus),
 		bus:       bus,
@@ -78,7 +84,8 @@ func NewProtoServerWithAuth(st store.CatalogStore, w *watch.Registry, bus *event
 	if len(unary) > 0 {
 		opts = append(opts, grpc.ChainUnaryInterceptor(unary...))
 	}
-	opts = append(opts, grpc.StreamInterceptor(s.streamInterceptor))
+	stream = append([]grpc.StreamServerInterceptor{s.streamInterceptor}, stream...)
+	opts = append(opts, grpc.ChainStreamInterceptor(stream...))
 	s.gs = grpc.NewServer(opts...)
 	pb.RegisterDiscoveryServer(s.gs, s)
 	return s

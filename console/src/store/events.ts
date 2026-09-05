@@ -30,6 +30,7 @@ type State = {
   push: (ev: BeaconEvent) => void;
   setServices: (s: Record<string, string[]>) => void;
   setInstances: (name: string, list: Instance[]) => void;
+  setAllInstances: (instances: Record<string, Instance[]>) => void;
   clear: () => void;
 };
 
@@ -69,5 +70,6 @@ export const useEventStore = create<State>((set) => ({
   setServices: (services) => set({ services }),
   setInstances: (name, list) =>
     set((s) => ({ instances: { ...s.instances, [name]: list } })),
+  setAllInstances: (instances) => set({ instances }),
   clear: () => set({ events: [] }),
 }));

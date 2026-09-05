@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sanskar/beacon/pkg/agent"
 	"github.com/sanskar/beacon/pkg/catalog"
 	"github.com/sanskar/beacon/pkg/clock"
@@ -55,6 +54,7 @@ type Server struct {
 	readyCheck  func() bool
 	ready       atomic.Bool
 	maxBodySize int64
+	metrics     *serverMetrics
 }
 
 type httpLimiterEntry struct {
@@ -132,6 +132,7 @@ func New(cfg Config) *Server {
 		authToken:    cfg.AuthToken,
 		readyCheck:   cfg.ReadyCheck,
 		maxBodySize:  cfg.MaxBodyBytes,
+		metrics:      newServerMetrics(),
 	}
 	s.ready.Store(true)
 	s.routes()
@@ -162,7 +163,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/lab/consistency/", s.wrap(s.labConsistencyAction))
 	s.mux.HandleFunc("/v1/bench/gossip-contrast", s.wrap(s.gossipContrast))
 	s.mux.HandleFunc("/v1/events", s.authenticatedSSE)
-	s.mux.Handle("/metrics", s.auth(promhttp.Handler()))
+	s.mux.Handle("/metrics", s.auth(s.metrics.handler(s)))
 	s.mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -179,7 +180,9 @@ func (s *Server) routes() {
 }
 
 // Handler returns the root handler.
-func (s *Server) Handler() http.Handler { return s.mux }
+func (s *Server) Handler() http.Handler {
+	return s.instrument(telemetry.HTTPMiddleware(s.mux))
+}
 
 // SetReady changes readiness independently from liveness.
 func (s *Server) SetReady(ready bool) { s.ready.Store(ready) }
@@ -196,7 +199,7 @@ func (s *Server) IsReady() bool {
 func (s *Server) ListenAndServe(addr string) error {
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.mux,
+		Handler:           s.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

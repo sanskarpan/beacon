@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, GitBranch, HeartPulse, Network, Radio, Scale, Shield } from "lucide-react";
-import { connectSSE, listInstances, listServices } from "./api/client";
+import { ApiError, connectSSE, listInstances, listServices } from "./api/client";
 import { useEventStore, type BeaconEvent } from "./store/events";
 import MeshTopology from "./views/MeshTopology";
 import PropagationTimeline from "./views/PropagationTimeline";
@@ -24,7 +24,9 @@ type ViewId = (typeof views)[number]["id"];
 
 export default function App() {
   const [view, setView] = useState<ViewId>("prop");
-  const { live, setLive, connected, setConnected, push, setServices, setInstances, events } =
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<ApiError | null>(null);
+  const { live, setLive, connected, setConnected, push, setServices, setAllInstances, events } =
     useEventStore();
 
   useEffect(() => {
@@ -38,12 +40,27 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
-      const svcs = await listServices();
-      if (cancelled) return;
-      setServices(svcs);
-      for (const name of Object.keys(svcs)) {
-        const insts = await listInstances(name);
-        if (!cancelled) setInstances(name, insts);
+      setCatalogLoading(true);
+      try {
+        const svcs = await listServices();
+        if (cancelled) return;
+        setServices(svcs);
+        const results = await Promise.all(
+          Object.keys(svcs).map(async (name) => [name, await listInstances(name)] as const)
+        );
+        if (cancelled) return;
+        setAllInstances(Object.fromEntries(results));
+        setCatalogError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setCatalogError(
+            error instanceof ApiError
+              ? error
+              : new ApiError("Unable to load catalog data", "/v1/catalog/services", null)
+          );
+        }
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
       }
     };
     tick();
@@ -52,7 +69,7 @@ export default function App() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [setServices, setInstances]);
+  }, [setServices, setAllInstances]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -116,6 +133,16 @@ export default function App() {
       </header>
 
       <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 py-4">
+        {catalogError && (
+          <div role="alert" className="mb-4 rounded-lg border border-signal-red/40 bg-signal-red/10 px-4 py-2 text-sm text-signal-red">
+            Catalog unavailable: {catalogError.message}. Retrying automatically.
+          </div>
+        )}
+        {catalogLoading && Object.keys(useEventStore.getState().services).length === 0 && (
+          <div role="status" className="mb-4 text-xs font-mono text-slate-500">
+            Loading live catalog…
+          </div>
+        )}
         {view === "mesh" && <MeshTopology />}
         {view === "prop" && <PropagationTimeline />}
         {view === "health" && <HealthInspector />}

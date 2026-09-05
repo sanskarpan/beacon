@@ -1,11 +1,12 @@
 # docker-compose.yml — Production deploy for beacon.
 #
-# Starts 3 beacon-server nodes (AP mode with gossip), an agent, and the console.
+# Starts 3 beacon-server nodes (AP gossip by default; CP Raft when selected), an agent, and the console.
 # Health: HTTP /health (control plane) and / (console).
 #
 # Usage:
 #   docker compose up --build
 #   docker compose up --build -d  (detached)
+#   BEACON_CONSISTENCY=cp docker compose up --build
 #   BEACON_API_URL=http://server-1:8500 docker compose up
 
 services:
@@ -22,7 +23,10 @@ services:
       - "-grpc=:8502"
       - "-node=server-1"
       - "-advertise=server-1"
-      - "-consistency=ap"
+      - "-consistency=${BEACON_CONSISTENCY:-ap}"
+      - "-raft=:8300"
+      - "-raft-peers=server-1=server-1:8300,server-2=server-2:8300,server-3=server-3:8300"
+      - "-data-dir=/data"
     ports:
       - "8500:8500"
       - "8600:8600"
@@ -41,6 +45,8 @@ services:
           memory: 512M
     networks:
       - beacon
+    volumes:
+      - server-1-data:/data
 
   server-2:
     build:
@@ -54,7 +60,10 @@ services:
       - "-grpc=:8502"
       - "-node=server-2"
       - "-advertise=server-2"
-      - "-consistency=ap"
+      - "-consistency=${BEACON_CONSISTENCY:-ap}"
+      - "-raft=:8300"
+      - "-raft-peers=server-1=server-1:8300,server-2=server-2:8300,server-3=server-3:8300"
+      - "-data-dir=/data"
       - "-join=server-1:7946"
     ports:
       - "8501:8500"
@@ -77,6 +86,8 @@ services:
           memory: 512M
     networks:
       - beacon
+    volumes:
+      - server-2-data:/data
 
   server-3:
     build:
@@ -90,7 +101,10 @@ services:
       - "-grpc=:8502"
       - "-node=server-3"
       - "-advertise=server-3"
-      - "-consistency=ap"
+      - "-consistency=${BEACON_CONSISTENCY:-ap}"
+      - "-raft=:8300"
+      - "-raft-peers=server-1=server-1:8300,server-2=server-2:8300,server-3=server-3:8300"
+      - "-data-dir=/data"
       - "-join=server-1:7946"
     ports:
       - "8505:8500"
@@ -113,6 +127,8 @@ services:
           memory: 512M
     networks:
       - beacon
+    volumes:
+      - server-3-data:/data
 
   # --- Agent (registers service instances) ---
   agent:
@@ -162,6 +178,9 @@ services:
 
 volumes:
   agent-data:
+  server-1-data:
+  server-2-data:
+  server-3-data:
 
 networks:
   beacon:
