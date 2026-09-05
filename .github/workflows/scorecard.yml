@@ -14,5 +14,5 @@ jobs:
         # retries and fails the run; SARIF upload below still surfaces
         # findings in the Security tab on every push.
         with: { results_file: results.sarif, results_format: sarif, publish_results: false }
-       - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@v4
         with: { sarif_file: results.sarif }
