@@ -88,12 +88,11 @@ func TestSlowConsumerDoesNotStallOthers(t *testing.T) {
 	<-fastCh
 
 	// flood notifications — slow buffer fills; fast still receives
-	received := 0
+	var received atomic.Int32
 	done := make(chan struct{})
 	go func() {
 		for range fastCh {
-			received++
-			if received >= 5 {
+			if received.Add(1) >= 5 {
 				close(done)
 				return
 			}
@@ -107,7 +106,7 @@ func TestSlowConsumerDoesNotStallOthers(t *testing.T) {
 	select {
 	case <-done:
 	case <-floodWait.C:
-		t.Fatalf("fast consumer stalled; received=%d", received)
+		t.Fatalf("fast consumer stalled; received=%d", received.Load())
 	}
 }
 
