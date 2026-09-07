@@ -176,8 +176,40 @@ services:
     networks:
       - beacon
 
+  # --- Prometheus (metrics) ---
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+    networks:
+      - beacon
+
+  # --- Grafana (dashboards) ---
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - beacon
+
 volumes:
   agent-data:
+  grafana-data:
   server-1-data:
   server-2-data:
   server-3-data:

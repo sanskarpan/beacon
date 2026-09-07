@@ -1,0 +1,48 @@
+{
+  "title": "Beacon Overview",
+  "tags": ["beacon"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Catalog index",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "beacon_catalog_index"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Open watchers",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "beacon_watch_open"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "xDS NACK rate (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "rate(beacon_xds_nack_total[5m])"
+        }
+      ]
+    }
+  ]
+}

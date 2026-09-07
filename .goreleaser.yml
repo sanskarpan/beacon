@@ -26,6 +26,14 @@ dockers:
     dockerfile: Dockerfile.server
     build_flag_templates: ["--build-arg=VERSION={{.Version}}"]
 checksum: { name_template: checksums.txt }
+brews:
+  - name: beacon
+    repository:
+      owner: sanskarpan
+      name: homebrew-tap
+    homepage: https://github.com/sanskarpan/beacon
+    description: Consul-class service discovery — gossip + Raft catalog, DNS/HTTP/gRPC/xDS
+    skip_upload: auto
 sbom: { artifacts: true }
 signs:
   - artifacts: checksum

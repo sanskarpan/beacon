@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" role="img" aria-label="beacon consistency lab diagram">
+  <title>beacon consistency lab — AP stale-read vs CP rejected-write under partition</title>
+  <defs>
+    <marker id="cl-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#16a34a"/>
+    </marker>
+    <marker id="cl-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#f31260"/>
+    </marker>
+    <marker id="cl-slate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="960" height="500" rx="12" fill="#f8fafc"/>
+  <text x="30" y="34" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" fill="#0f172a">consistency lab — one partition, opposite trade-offs</text>
+  <text x="30" y="56" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#64748b">live view: console ConsistencyLab (flip AP/CP, partition one server) · toggle partition/heal in the lab</text>
+
+  <!-- ===== AP panel ===== -->
+  <g font-family="system-ui, -apple-system, sans-serif">
+    <rect x="30" y="72" width="435" height="348" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="2.5"/>
+    <text x="50" y="100" font-size="16" font-weight="700" fill="#15803d">AP — gossip catalog (available)</text>
+    <rect x="50" y="112" width="180" height="30" rx="8" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+    <text x="62" y="132" font-size="13" fill="#0f172a">client (stale side)</text>
+    <rect x="50" y="160" width="160" height="66" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+    <text x="62" y="182" font-size="13" font-weight="700" fill="#0f172a">server-A</text>
+    <text x="62" y="200" font-size="12" fill="#475569">accepts writes ✓</text>
+    <text x="62" y="216" font-size="12" fill="#475569">writes: OK</text>
+    <rect x="285" y="160" width="160" height="66" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+    <text x="297" y="182" font-size="13" font-weight="700" fill="#0f172a">server-B</text>
+    <text x="297" y="200" font-size="12" fill="#475569">accepts writes ✓</text>
+    <text x="297" y="216" font-size="12" fill="#475569">writes: OK (diverged)</text>
+    <!-- partition -->
+    <polyline points="247,150 239,175 255,200 239,225 255,250 239,275 255,300 239,325" fill="none" stroke="#f31260" stroke-width="3"/>
+    <text x="247" y="345" font-size="12" font-weight="700" fill="#f31260" text-anchor="middle">partition</text>
+    <!-- stale read -->
+    <path d="M 140 142 C 140 240, 120 280, 105 330" fill="none" stroke="#f31260" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#cl-bad)"/>
+    <text x="50" y="360" font-size="12" font-weight="700" fill="#be123c">read → STALE endpoint</text>
+    <text x="50" y="378" font-size="12" fill="#64748b">one failed request, then converges</text>
+    <text x="50" y="398" font-size="12" fill="#15803d">risk: stale endpoint · never blocks</text>
+  </g>
+
+  <!-- ===== CP panel ===== -->
+  <g font-family="system-ui, -apple-system, sans-serif">
+    <rect x="495" y="72" width="435" height="348" rx="10" fill="#ffffff" stroke="#b45309" stroke-width="2.5"/>
+    <text x="515" y="100" font-size="16" font-weight="700" fill="#b45309">CP — Raft catalog (linearizable)</text>
+    <rect x="515" y="112" width="180" height="30" rx="8" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+    <text x="527" y="132" font-size="13" fill="#0f172a">client (minority side)</text>
+    <rect x="515" y="160" width="160" height="66" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+    <text x="527" y="182" font-size="13" font-weight="700" fill="#0f172a">majority (2/3)</text>
+    <text x="527" y="200" font-size="12" fill="#475569">quorum ✓</text>
+    <text x="527" y="216" font-size="12" fill="#475569">writes: OK</text>
+    <rect x="750" y="160" width="160" height="66" rx="8" fill="#fee2e2" stroke="#f31260" stroke-width="2"/>
+    <text x="762" y="182" font-size="13" font-weight="700" fill="#0f172a">minority (1/3)</text>
+    <text x="762" y="200" font-size="12" fill="#475569">no quorum ✗</text>
+    <text x="762" y="216" font-size="12" fill="#475569">writes: REJECTED</text>
+    <!-- partition -->
+    <polyline points="712,150 704,175 720,200 704,225 720,250 704,275 720,300 704,325" fill="none" stroke="#f31260" stroke-width="3"/>
+    <text x="712" y="345" font-size="12" font-weight="700" fill="#f31260" text-anchor="middle">partition</text>
+    <!-- rejected write -->
+    <path d="M 605 127 C 660 140, 700 150, 748 175" fill="none" stroke="#f31260" stroke-width="2" marker-end="url(#cl-bad)"/>
+    <text x="515" y="360" font-size="12" font-weight="700" fill="#be123c">minority write → REJECTED (503, no quorum)</text>
+    <text x="515" y="378" font-size="12" fill="#64748b">reads stay linearizable everywhere</text>
+    <text x="515" y="398" font-size="12" fill="#b45309">risk: cannot register at all (outage)</text>
+  </g>
+
+  <rect x="30" y="432" width="900" height="44" rx="8" fill="#0f172a"/>
+  <text x="48" y="459" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#e2e8f0">AP risks a <tspan font-weight="700" fill="#fda4af">stale endpoint</tspan> (one failed request) · CP risks <tspan font-weight="700" fill="#fda4af">being unable to register at all</tspan> (an outage).</text>
+</svg>

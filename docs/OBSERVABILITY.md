@@ -1,5 +1,21 @@
 # Observability
 
+## Local stack (`docker compose up` → Prometheus :9090 / Grafana :3001)
+
+```bash
+docker compose up --build
+# → Prometheus http://localhost:9090 · Grafana http://localhost:3001 (admin/admin)
+```
+
+- Targets (15s scrape, `deploy/prometheus/prometheus.yml`): `server-1:8500/metrics`,
+  `server-2:8500/metrics`, `server-3:8500/metrics` (+ self-scrape `prometheus:9090`).
+- Grafana datasource is auto-provisioned (`deploy/grafana/provisioning/datasources/prometheus.yml`);
+  dashboards in `deploy/grafana/provisioning/dashboards/` load into the `Beacon` folder.
+- Key metrics: `beacon_catalog_index`, `beacon_watch_open`, `beacon_watch_notified_total`,
+  `beacon_xds_push_total`, `beacon_xds_nack_total`, `beacon_gossip_delta_total`,
+  `beacon_health_check_total`, `beacon_outlier_ejected`.
+- Alerts: see `deploy/prometheus/rules.yml` (SLO burn-rate alerts in `docs/SLO.md`).
+
 ## Metrics (`/metrics` Prometheus)
 
 | Metric | Labels | Description |

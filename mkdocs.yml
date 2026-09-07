@@ -10,7 +10,14 @@ theme:
 markdown_extensions: [admonition, pymdownx.superfences, pymdownx.tabbed, toc, tables, footnotes]
 nav:
   - Home: index.md
+  - Installation: INSTALL.md
+  - Demo: DEMO.md
   - Architecture: ARCHITECTURE.md
+  - Comparison: COMPARISON.md
+  - Migration: MIGRATION.md
+  - Benchmarks: BENCHMARKS.md
+  - Cookbook: COOKBOOK.md
+  - Stability: STABILITY.md
   - Configuration: CONFIGURATION.md
   - API: API.md
   - Deployment: DEPLOYMENT.md
@@ -36,3 +43,9 @@ nav:
       - adr/0002-agent-local-health.md
       - adr/0003-monotonic-index.md
   - Production Audit: PRODUCTION_AUDIT_2026_09_04.md
+  - Blog:
+      - blog/index.md
+      - blog/zero-stale-window.md
+      - blog/ap-vs-cp.md
+  - Good First Issues: GOOD_FIRST_ISSUES.md
+  - Module Alignment: MODULE_ALIGNMENT.md

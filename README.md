@@ -1,10 +1,13 @@
 # beacon
 
-[![CI](https://github.com/sanskar/beacon/actions/workflows/ci.yml/badge.svg)](https://github.com/sanskar/beacon/actions/workflows/ci.yml)
-[![Go Report](https://goreportcard.com/badge/github.com/sanskar/beacon)](https://goreportcard.com/report/github.com/sanskar/beacon)
-[![Go Reference](https://pkg.go.dev/badge/github.com/sanskar/beacon.svg)](https://pkg.go.dev/github.com/sanskar/beacon)
+[![CI](https://github.com/sanskarpan/beacon/actions/workflows/ci.yml/badge.svg)](https://github.com/sanskarpan/beacon/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/sanskarpan/beacon/actions/workflows/codeql.yml/badge.svg)](https://github.com/sanskarpan/beacon/actions/workflows/codeql.yml)
+[![Scorecard](https://github.com/sanskarpan/beacon/actions/workflows/scorecard.yml/badge.svg)](https://github.com/sanskarpan/beacon/actions/workflows/scorecard.yml)
+[![Pages](https://github.com/sanskarpan/beacon/actions/workflows/pages.yml/badge.svg)](https://sanskarpan.github.io/beacon/)
+[![Go Report](https://goreportcard.com/badge/github.com/sanskarpan/beacon)](https://goreportcard.com/report/github.com/sanskarpan/beacon)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sanskarpan/beacon.svg)](https://pkg.go.dev/github.com/sanskarpan/beacon)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/coverage-80%25-green)](https://github.com/sanskar/beacon/actions)
+[![codecov](https://codecov.io/gh/sanskarpan/beacon/branch/main/graph/badge.svg)](https://codecov.io/gh/sanskarpan/beacon)
 
 **A Consul-class service discovery system** — catalog with monotonic indexing, TTL leases, agent-local health checking with hysteresis, gossip-driven propagation, watch/notify, DNS + HTTP + gRPC interfaces, an xDS control plane, and a client SDK with resolver + balancer.
 
@@ -41,7 +44,45 @@ Run it yourself:
 go run ./cmd/beacon bench propagate
 ```
 
+## Demo (watch it work)
+
+![beacon demo](docs/assets/demo.gif)
+
+> Visual showcase lives in [`docs/DEMO.md`](docs/DEMO.md): console topology, propagation timeline,
+> consistency lab, and how to record the GIF.
+>
+> Diagrams: [`topology`](docs/assets/topology.svg) · [`timeline`](docs/assets/timeline.svg) · [`consistency lab`](docs/assets/consistency-lab.svg).
+
+```bash
+# Full stack: 3 servers + agent + console (+ Prometheus + Grafana)
+docker compose up --build
+# → console http://localhost:3000 · API http://localhost:8500 · Prometheus http://localhost:9090 · Grafana http://localhost:3001
+```
+
+| View | What you see |
+|---|---|
+| Mesh topology | live agent/server graph, health-colored nodes |
+| Propagation timeline | t0 crash → t1 detect → t2 gossip → t3 notify → t4 client |
+| Consistency lab | AP stale-read vs CP linearizable write under partition |
+| Health inspector | per-instance checks, hysteresis, flapping suppressed |
+
+To refresh the GIF after UI changes, overwrite `docs/assets/demo.gif` (same path, so README + Pages pick it up).
+
+```md
+![beacon demo](docs/assets/demo.gif)
+```
+
+See [`docs/DEMO.md`](docs/DEMO.md) for the 60-second record script (`ffmpeg` / `asciinema` / LiceCap).
+
 ## Quickstart
+
+Install — pick one (details in [`docs/INSTALL.md`](docs/INSTALL.md)):
+
+```bash
+brew install sanskarpan/tap/beacon          # Homebrew (WIP until first tagged release)
+go install github.com/sanskarpan/beacon/cmd/beacon-server@latest  # Go (see module-path caveat)
+docker run --rm -p 8500:8500 -p 8600:8600/udp ghcr.io/sanskarpan/beacon:latest  # Docker
+```
 
 ```bash
 # Build
@@ -74,6 +115,20 @@ cd console && bun install && bun run dev
 ```
 
 ## Architecture (short)
+
+```mermaid
+flowchart LR
+    Console[Console React + SSE] --> Server[beacon-server :8500/:8600/:8502]
+    Server --> Catalog[Catalog monotonic index]
+    Server --> Watch[Watch registry blocking + streaming]
+    Server --> XDS[xDS ADS CDS-EDS-LDS-RDS]
+    Server --> Store{Store}
+    Store -->|AP| Gossip[SWIM gossip deltas]
+    Store -->|CP| Raft[Raft quorum]
+    Agent[beacon-agent per node] -->|anti-entropy register| Server
+    Agent --> Checks[agent-local health over loopback]
+    Agent --> SWIM[SWIM membership]
+```
 
 ```
 Console (React) ──SSE──► beacon-server
@@ -145,6 +200,13 @@ Key properties under test:
 ## Docs
 
 Published site: **https://sanskarpan.github.io/beacon/** (MkDocs, `mkdocs.yml`, `pages.yml`).
+
+- [Demo](docs/DEMO.md) — GIF, screenshots, 60-second record script
+- [Comparison](docs/COMPARISON.md) — beacon vs Consul / etcd / Eureka / CoreDNS
+- [Migration](docs/MIGRATION.md) — Consul → beacon API mapping
+- [Benchmarks](docs/BENCHMARKS.md) — reproducible propagate + LB numbers
+- [Cookbook](docs/COOKBOOK.md) — copy-paste recipes (partition, rollout, flapping)
+- [Stability](docs/STABILITY.md) — SemVer + deprecation policy
 
 - [ARCHITECTURE](docs/ARCHITECTURE.md)
 - [CONSISTENCY](docs/CONSISTENCY.md)
