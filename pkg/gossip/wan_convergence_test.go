@@ -106,10 +106,10 @@ func TestWAN_MultiDCConvergence(t *testing.T) {
 	}
 }
 
-// TestWAN_PartitionBetweenDCs proves that when two groups in a cluster are
+// TestLANPartitionWithinDC proves that when two groups in a cluster are
 // partitioned, membership events (Fail) from one side do NOT reach the other.
 // After healing, NEW events propagate correctly to both sides.
-func TestWAN_PartitionBetweenDCs(t *testing.T) {
+func TestLANPartitionWithinDC(t *testing.T) {
 	clk := clock.NewVirtual(time.Unix(0, 0))
 	cluster := gossip.NewCluster(clk)
 	cluster.SetNetwork(gossip.NetworkConfig{Latency: 5 * time.Millisecond, Fanout: 3})
@@ -183,5 +183,63 @@ func TestWAN_PartitionBetweenDCs(t *testing.T) {
 
 	if dc2AfterPostHeal <= dc2BeforePostHeal {
 		t.Fatal("DC2 did not receive events after heal")
+	}
+}
+
+// TestWAN_PartitionBetweenDCs proves that the WAN links themselves stop
+// forwarding cross-DC membership deltas during a partition and resume after
+// both gateways reconnect.
+func TestWAN_PartitionBetweenDCs(t *testing.T) {
+	dc1 := gossip.NewWAN("dc1")
+	dc2 := gossip.NewWAN("dc2")
+	var mu sync.Mutex
+	var dc2Received int
+	recordDC2 := func(string, uint64, []byte) {
+		mu.Lock()
+		dc2Received++
+		mu.Unlock()
+	}
+
+	connect := func() {
+		dc1.JoinDC("dc2", []gossip.Member{{Name: "dc2-gw", Addr: "10.2.0.1"}})
+		dc2.JoinDC("dc1", []gossip.Member{{Name: "dc1-gw", Addr: "10.1.0.1"}})
+		dc1.OnFlood("dc2", func(from string, index uint64, payload []byte) {
+			dc2.Deliver(from, index, payload)
+		})
+		dc2.OnFlood("dc1", func(from string, index uint64, payload []byte) {
+			dc1.Deliver(from, index, payload)
+		})
+		dc2.OnFlood("dc1", recordDC2)
+	}
+	connect()
+
+	// Baseline: a connected WAN link delivers the membership delta.
+	dc1.Flood(1, []byte(`{"type":"member_failed","node":"dc1-n1"}`))
+	mu.Lock()
+	baseline := dc2Received
+	mu.Unlock()
+	if baseline != 1 {
+		t.Fatalf("connected WAN did not deliver baseline delta: got %d", baseline)
+	}
+
+	// Partition both directions. Flood must not cross either deleted link.
+	dc1.LeaveDC("dc2")
+	dc2.LeaveDC("dc1")
+	dc1.Flood(2, []byte(`{"type":"member_failed","node":"dc1-n2"}`))
+	mu.Lock()
+	duringPartition := dc2Received
+	mu.Unlock()
+	if duringPartition != baseline {
+		t.Fatalf("WAN delivered across partition: before=%d after=%d", baseline, duringPartition)
+	}
+
+	// Healing reconnects gateways and reinstalls the transport callbacks.
+	connect()
+	dc1.Flood(3, []byte(`{"type":"member_failed","node":"dc1-n3"}`))
+	mu.Lock()
+	afterHeal := dc2Received
+	mu.Unlock()
+	if afterHeal != baseline+1 {
+		t.Fatalf("WAN did not resume after heal: before=%d after=%d", baseline, afterHeal)
 	}
 }
