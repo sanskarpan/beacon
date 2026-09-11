@@ -1,6 +1,20 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@source "../src/**/*.{ts,tsx}";
+
+@theme {
+  --color-ink-950: #0a0e14;
+  --color-ink-900: #0f1419;
+  --color-ink-800: #151b23;
+  --color-ink-700: #1c2430;
+  --color-ink-600: #2a3544;
+  --color-signal-green: #3dd68c;
+  --color-signal-amber: #f5a524;
+  --color-signal-red: #f31260;
+  --color-signal-blue: #66b3ff;
+  --color-signal-violet: #a78bfa;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+}
 
 :root {
   color-scheme: dark;
