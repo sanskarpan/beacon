@@ -10,7 +10,7 @@ class Beacon < Formula
   on_macos do
     if Hardware::CPU.intel?
       url "https://github.com/sanskarpan/beacon/releases/download/v0.1.0/beacon_0.1.0_darwin_amd64.tar.gz"
-      sha256 "2813b0cf7cf45c1bb2827cd33616073abf37e6ee5c24985feb410283b36ed886"
+      sha256 "25209a3dbbd0e098e057d8d7b2f2ac2e04dd3205ecef3968f40726bf835a2fa3"
 
       define_method(:install) do
         bin.install "beacon"
@@ -20,7 +20,7 @@ class Beacon < Formula
     end
     if Hardware::CPU.arm?
       url "https://github.com/sanskarpan/beacon/releases/download/v0.1.0/beacon_0.1.0_darwin_arm64.tar.gz"
-      sha256 "42f511a6298d049f2d436d578d4074d6e9337c756a9d0ab2eeedcddf0083184d"
+      sha256 "59f0032e4039e1ec74aeccd85287ede4635a9dcd2d7ec71cee2a04baa9e76f19"
 
       define_method(:install) do
         bin.install "beacon"
@@ -33,7 +33,7 @@ class Beacon < Formula
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
       url "https://github.com/sanskarpan/beacon/releases/download/v0.1.0/beacon_0.1.0_linux_amd64.tar.gz"
-      sha256 "c053ae0f413d9938ec594f1af5b90ccf74380e231f4b8ea171ce138e7b88607c"
+      sha256 "bff267156c329571fd831a1aacf90833f780abc77b1286ad8245110b6b1f4ca8"
       define_method(:install) do
         bin.install "beacon"
         bin.install "beacon-agent"
@@ -42,7 +42,7 @@ class Beacon < Formula
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
       url "https://github.com/sanskarpan/beacon/releases/download/v0.1.0/beacon_0.1.0_linux_arm64.tar.gz"
-      sha256 "43b70f4061e707f6ef52dced93fd0c4c29fa7cd6ebb5f2df02fcd0c7c750ed69"
+      sha256 "4c7651f29f2917a579c23950054b74cf3d68a23853c810f8eab2398580195bf4"
       define_method(:install) do
         bin.install "beacon"
         bin.install "beacon-agent"
