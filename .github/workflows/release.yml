@@ -35,5 +35,9 @@ jobs:
       - uses: anchore/sbom-action@v0
         with: { path: ./, format: spdx-json, output-file: sbom.spdx.json }
       - uses: sigstore/cosign-installer@v3
-      - run: cosign sign --yes ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+      # GoReleaser's .Version strips the leading `v`, so the pushed tags are
+      # `:0.1.0`-style, not `:v0.1.0` (github.ref_name). Sign what was pushed.
+      - run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cosign sign --yes "ghcr.io/${{ github.repository }}:${VERSION}" "ghcr.io/${{ github.repository }}:latest"
         env: { COSIGN_EXPERIMENTAL: "1" }
