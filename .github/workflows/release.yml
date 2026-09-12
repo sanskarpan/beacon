@@ -19,6 +19,8 @@ jobs:
         working-directory: console
       - run: bun run build
         working-directory: console
+      - name: Install syft (GoReleaser SBOM cataloging)
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
       - uses: goreleaser/goreleaser-action@v7
         with: { version: latest, args: release --clean }
         env:

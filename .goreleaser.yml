@@ -22,9 +22,9 @@ builds:
     goos: [linux, darwin]
     goarch: [amd64, arm64]
 dockers:
-  - image_templates: ["ghcr.io/sanskarpan/beacon:{{.Version}}", "ghcr.io/sanskarpan/beacon:latest"]
-    dockerfile: Dockerfile.server
-    build_flag_templates: ["--build-arg=VERSION={{.Version}}"]
+  - ids: [beacon-server]
+    image_templates: ["ghcr.io/sanskarpan/beacon:{{.Version}}", "ghcr.io/sanskarpan/beacon:latest"]
+    dockerfile: Dockerfile.release
 checksum: { name_template: checksums.txt }
 brews:
   - name: beacon
@@ -34,10 +34,8 @@ brews:
     homepage: https://github.com/sanskarpan/beacon
     description: Consul-class service discovery — gossip + Raft catalog, DNS/HTTP/gRPC/xDS
     skip_upload: auto
-sbom: { artifacts: true }
-signs:
-  - artifacts: checksum
-    args: [--yes]
+sboms:
+  - artifacts: archive
 changelog:
   sort: asc
   filters: { exclude: [^docs:, ^chore:, ^test:] }

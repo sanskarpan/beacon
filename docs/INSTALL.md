@@ -5,9 +5,8 @@ Pick one, then verify with the health check at the bottom.
 
 ## Option 1 — Homebrew (macOS / Linux)
 
-> **WIP — until the first tagged release.** The formula is published to
-> `sanskarpan/homebrew-tap` by GoReleaser on the first `vX.Y.Z` tag.
-> Until then this tap 404s; use Option 2 or 3.
+The formula is published to `sanskarpan/homebrew-tap` by GoReleaser on every
+`vX.Y.Z` tag.
 
 ```bash
 brew install sanskarpan/tap/beacon
@@ -16,7 +15,7 @@ beacon-server --http :8500 --dns :8600 --consistency ap --node server-1
 
 Installs `beacon`, `beacon-server`, and `beacon-agent`.
 
-## Option 2 — `go install` (Go 1.26+)
+## Option 2 — `go install` (Go 1.27+)
 
 Canonical command (works once `go.mod` is realigned to `v2`):
 
@@ -64,7 +63,7 @@ make build   # → ./bin/beacon-server ./bin/beacon ./bin/beacon-agent
 ./bin/beacon-server --http :8500 --dns :8600 --consistency ap --node server-1
 ```
 
-Requires Go 1.26+. The web console needs Bun (`cd console && bun install && bun run dev`).
+Requires Go 1.27+. The web console needs Bun (`cd console && bun install && bun run dev`).
 
 ## Verify
 

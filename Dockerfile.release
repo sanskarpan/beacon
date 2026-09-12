@@ -1,0 +1,15 @@
+# Dockerfile.release — minimal image for GoReleaser.
+#
+# Unlike Dockerfile.server (which rebuilds from the full repo context),
+# GoReleaser hands docker a temp context containing only this Dockerfile and
+# the prebuilt binaries, so this file just layers the server binary onto
+# alpine. Keep user/ports/healthcheck in sync with Dockerfile.server.
+FROM alpine:3.24
+RUN apk add --no-cache wget ca-certificates tini && adduser -D -u 10001 beacon \
+    && mkdir -p /data \
+    && chown beacon:beacon /data
+COPY beacon-server /usr/local/bin/beacon-server
+USER beacon
+EXPOSE 8500 8600 8502
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=10s CMD wget -q --spider http://localhost:8500/health || exit 1
+ENTRYPOINT ["/sbin/tini", "--", "beacon-server"]

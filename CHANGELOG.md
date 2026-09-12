@@ -2,7 +2,21 @@
 
 All notable changes to `beacon` are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [v0.1.0] - 2026-09-12
+
+First tagged release. Includes the audit-complete baseline (`#184`: 65 TODOs,
+18 phases, AP/CP backends, watch, DNS, xDS, mesh, sim, console — see
+`CHECKLIST.md`) plus everything below.
+
+### Added
+- Console migrated to Tailwind CSS 4 (`@tailwindcss/postcss`, CSS-first `@theme`
+  tokens, obsolete JS config removed)
+- Console on TypeScript 7 (regenerated `bun.lock`, TS7-incompatible options removed)
+- Real-process CP partition/recovery coverage: `TestE2E_CPComposePartition`
+  isolates a Docker Compose minority at the network layer and verifies majority
+  writes, minority rejection/stale reads, reconnect, and recovery in CI
+- WAN partition/heal gossip convergence test (`pkg/gossip/wan_convergence_test.go`)
+- `Dockerfile.server` creates writable `/data` for the non-root `beacon` user
 
 ### Fixed
 - `pkg/mesh/sds.go`: `Fetch` signs outside the cache lock (no `mu` across `CA.Sign`)
@@ -20,7 +34,3 @@ All notable changes to `beacon` are documented here. Format based on [Keep a Cha
 ### Added
 - `pkg/api/pb/pb.go` hand-written stub, `pkg/mesh/sds_xds.go` SDS-XDS adapter, `external/` stubs (`gossip-system`, `grpc-service`)
 - `LICENSE` (MIT), `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`
-
-## [0.1.0] - 2024-08-24
-
-- Initial audit-complete release (`#184`): 65 TODOs, 18 phases, AP/CP backends, watch, DNS, xDS, mesh, sim, console — see `CHECKLIST.md`.
