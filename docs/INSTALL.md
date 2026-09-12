@@ -9,7 +9,7 @@ The formula is published to `sanskarpan/homebrew-tap` by GoReleaser on every
 `vX.Y.Z` tag.
 
 ```bash
-brew install sanskarpan/tap/beacon
+brew install sanskarpan/beacon/beacon
 beacon-server --http :8500 --dns :8600 --consistency ap --node server-1
 ```
 

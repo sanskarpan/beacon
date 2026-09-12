@@ -28,9 +28,10 @@ dockers:
 checksum: { name_template: checksums.txt }
 brews:
   - name: beacon
+    directory: Formula
     repository:
       owner: sanskarpan
-      name: homebrew-tap
+      name: beacon
     homepage: https://github.com/sanskarpan/beacon
     description: Consul-class service discovery — gossip + Raft catalog, DNS/HTTP/gRPC/xDS
     skip_upload: auto
