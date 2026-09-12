@@ -21,6 +21,12 @@ jobs:
         working-directory: console
       - name: Install syft (GoReleaser SBOM cataloging)
         run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      - name: Log in to GHCR (GoReleaser Docker push)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: goreleaser/goreleaser-action@v7
         with: { version: latest, args: release --clean }
         env:
