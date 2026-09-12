@@ -178,12 +178,13 @@ SPEC: *Extends SWIM gossip project and gRPC-with-interceptors project; optional 
 - **Priority:** P1  
 - **Source:** SPEC §3 architecture diagram; SPEC §17 CLI  
 - **Status:** `[x]` done — `docker-compose.yml` supports 3-node AP gossip and 3-node networked CP Raft; Dockerfiles and health probes are documented.
-- **Current state:** AP and CP have separate real-process coverage; CP uses static `BEACON_RAFT_PEERS` and durable per-node data directories.
+- **Current state:** AP and CP have separate real-process coverage; CP uses static `BEACON_RAFT_PEERS` and durable per-node data directories. `TestE2E_CPComposePartition` isolates a real CP minority at the Docker network layer and verifies majority writes, minority rejection/stale reads, reconnect, and recovery in CI.
 - **Description:** Real `beacon-server` processes with bootstrap-expect, join, AP or CP.  
 - **Acceptance criteria:**
   - [x] docker-compose with 3 servers (`docker-compose.yml`) + smoke test script (`scripts/multi-server-smoke.sh`)
   - [x] Register on server-1, read on server-2 after converge (smoke script test #2)
   - [x] CP process cluster replication, restart recovery, and quorum-backed writes (`test/integration/e2e_cp_process_test.go`)
+  - [x] CP partition/recovery across real Compose processes (`test/integration/e2e_cp_compose_test.go`, guarded by `BEACON_RUN_DOCKER_CP=1`)
 
 ### TODO-015 — AP vs CP write-latency and divergence artifacts in CI
 - **Priority:** P2  
@@ -667,7 +668,7 @@ SPEC: *Extends SWIM gossip project and gRPC-with-interceptors project; optional 
 |---|---|
 | P0 | **0 open** (all done) |
 | P1 | **0 open** (all done) |
-| P2 | **~1 open** (CP partition test across real processes — docker-compose TODO only) |
+| P2 | **0 open** (remaining items are partial/unproven scale gates, including TODO-016 and TODO-023) |
 | P3 | **0 open** (all done) |
 | **Total tracked items** | **TODO-001 … TODO-065** |
 
