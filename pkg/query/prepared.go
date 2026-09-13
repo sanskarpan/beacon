@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/store"
 )
 
 // Failover defines cross-datacenter or tag failover.

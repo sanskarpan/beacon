@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/health/check"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/health/check"
 )
 
 func TestHTTPCheck(t *testing.T) {

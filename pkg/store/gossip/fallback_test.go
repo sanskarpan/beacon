@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/agent"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/agent"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
 )
 
 // When gossip is disabled, anti-entropy alone still converges (agent push).

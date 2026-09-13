@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/agent"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/agent"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
 )
 
 // remoteClient talks to beacon-server over HTTP.

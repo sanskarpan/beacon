@@ -3,7 +3,7 @@ package gossip_test
 import (
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/gossip"
+	"github.com/sanskarpan/beacon/pkg/gossip"
 )
 
 func TestWANFlood(t *testing.T) {

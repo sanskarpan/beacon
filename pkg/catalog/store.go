@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/trace"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/trace"
 )
 
 var (

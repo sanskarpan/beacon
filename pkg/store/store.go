@@ -4,8 +4,8 @@ package store
 import (
 	"context"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/watch"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/watch"
 )
 
 // CatalogStore is the common interface for AP and CP backends.

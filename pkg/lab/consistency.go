@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/gossip"
-	gstore "github.com/sanskar/beacon/pkg/store/gossip"
-	rstore "github.com/sanskar/beacon/pkg/store/raft"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/gossip"
+	gstore "github.com/sanskarpan/beacon/pkg/store/gossip"
+	rstore "github.com/sanskarpan/beacon/pkg/store/raft"
 )
 
 // ConsistencyLab runs real AP (gossip) and CP (raft lab) backends side by side

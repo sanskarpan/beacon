@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package beacon.v1;
 
-option go_package = "github.com/sanskar/beacon/pkg/api/pb;pb";
+option go_package = "github.com/sanskarpan/beacon/pkg/api/pb;pb";
 
 // Discovery is the gRPC control/data plane for beacon.
 // Generated Go bindings are written to pkg/api/pb.

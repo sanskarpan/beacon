@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/lb"
+	"github.com/sanskarpan/beacon/pkg/lb"
 )
 
 func TestMaglevAffinity(t *testing.T) {

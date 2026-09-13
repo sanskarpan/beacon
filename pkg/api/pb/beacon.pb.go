@@ -736,7 +736,7 @@ const file_beacon_v1_beacon_proto_rawDesc = "" +
 	"\aResolve\x12\x19.beacon.v1.ResolveRequest\x1a\x1a.beacon.v1.ResolveResponse\x129\n" +
 	"\x05Watch\x12\x17.beacon.v1.WatchRequest\x1a\x15.beacon.v1.WatchEvent0\x01\x12E\n" +
 	"\n" +
-	"WatchMulti\x12\x1c.beacon.v1.WatchMultiRequest\x1a\x15.beacon.v1.WatchEvent(\x010\x01B)Z'github.com/sanskar/beacon/pkg/api/pb;pbb\x06proto3"
+	"WatchMulti\x12\x1c.beacon.v1.WatchMultiRequest\x1a\x15.beacon.v1.WatchEvent(\x010\x01B,Z*github.com/sanskarpan/beacon/pkg/api/pb;pbb\x06proto3"
 
 var (
 	file_beacon_v1_beacon_proto_rawDescOnce sync.Once

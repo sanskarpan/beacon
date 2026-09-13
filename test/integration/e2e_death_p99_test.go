@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/gossip"
-	"github.com/sanskar/beacon/pkg/sdk"
-	gstore "github.com/sanskar/beacon/pkg/store/gossip"
-	"github.com/sanskar/beacon/pkg/watch"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/gossip"
+	"github.com/sanskarpan/beacon/pkg/sdk"
+	gstore "github.com/sanskarpan/beacon/pkg/store/gossip"
+	"github.com/sanskarpan/beacon/pkg/watch"
 )
 
 // TestE2E_InstanceDeathClientP99 measures instance death → client address-list

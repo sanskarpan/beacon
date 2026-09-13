@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/gossip"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/gossip"
 )
 
 func newUDPTestNode(t *testing.T, name string) *gossip.UDP {

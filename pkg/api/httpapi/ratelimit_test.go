@@ -5,9 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/api/httpapi"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/api/httpapi"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/store"
 )
 
 func TestRateLimit429(t *testing.T) {

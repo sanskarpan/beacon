@@ -9,11 +9,11 @@ import (
 	"github.com/example/grpc-service/pkg/logging"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/sdk"
-	"github.com/sanskar/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/sdk"
+	"github.com/sanskarpan/beacon/pkg/store"
 	"google.golang.org/grpc"
 )
 

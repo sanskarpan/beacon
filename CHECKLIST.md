@@ -8,7 +8,7 @@
 
 ## Phase 0 — Bootstrap & Integration Points (16/16)
 
-- [x] 🔴 `go mod init github.com/sanskar/beacon`; Go 1.22+
+- [x] 🔴 `go mod init github.com/sanskarpan/beacon`; Go 1.27+
 - [x] 🔴 deps: grpc, protobuf, miekg/dns, x/sync, prometheus, yaml
 - [x] 🔴 Membership seam + MemoryMembership fabric
 - [x] 🔴 SDK interceptor seam (`OutcomeReporter`, `InterceptorChain`)

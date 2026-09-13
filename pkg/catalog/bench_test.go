@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 func BenchmarkGet10k(b *testing.B) {

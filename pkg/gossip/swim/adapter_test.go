@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/gossip"
-	beaconswim "github.com/sanskar/beacon/pkg/gossip/swim"
-	gstore "github.com/sanskar/beacon/pkg/store/gossip"
-	"github.com/sanskar/beacon/pkg/testutil"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/gossip"
+	beaconswim "github.com/sanskarpan/beacon/pkg/gossip/swim"
+	gstore "github.com/sanskarpan/beacon/pkg/store/gossip"
+	"github.com/sanskarpan/beacon/pkg/testutil"
 )
 
 func TestSWIM_MultiNodeRegistrationPropagates(t *testing.T) {

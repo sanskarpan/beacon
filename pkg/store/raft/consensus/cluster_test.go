@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/store/raft/consensus"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/store/raft/consensus"
 	raftlib "github.com/sanskarpan/raft-consensus/pkg/raft"
 )
 

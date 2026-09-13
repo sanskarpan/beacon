@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"

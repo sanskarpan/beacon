@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/clock"
 )
 
 // Kind identifies an event type.

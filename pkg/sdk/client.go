@@ -15,13 +15,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/health/outlier"
-	"github.com/sanskar/beacon/pkg/lb"
-	"github.com/sanskar/beacon/pkg/store"
-	"github.com/sanskar/beacon/pkg/trace"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/health/outlier"
+	"github.com/sanskarpan/beacon/pkg/lb"
+	"github.com/sanskarpan/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/trace"
 	"google.golang.org/grpc"
 )
 

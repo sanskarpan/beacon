@@ -12,8 +12,8 @@ import (
 	"sync"
 
 	"github.com/miekg/dns"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/store"
 )
 
 // Server answers discovery DNS queries.

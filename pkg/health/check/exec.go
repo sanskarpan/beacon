@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 // ExecCheck runs a command. exit 0=passing, 1=warning, else critical.

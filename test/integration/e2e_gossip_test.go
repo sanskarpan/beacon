@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/gossip"
-	gstore "github.com/sanskar/beacon/pkg/store/gossip"
-	"github.com/sanskar/beacon/pkg/trace"
-	"github.com/sanskar/beacon/test/integration"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/gossip"
+	gstore "github.com/sanskarpan/beacon/pkg/store/gossip"
+	"github.com/sanskarpan/beacon/pkg/trace"
+	"github.com/sanskarpan/beacon/test/integration"
 )
 
 // E2E: register on node 0 → visible on all 10 nodes via gossip.

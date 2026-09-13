@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"

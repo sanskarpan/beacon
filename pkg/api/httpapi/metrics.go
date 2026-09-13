@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/sanskar/beacon/pkg/gossip"
+	"github.com/sanskarpan/beacon/pkg/gossip"
 )
 
 type serverMetrics struct {

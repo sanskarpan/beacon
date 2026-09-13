@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 type beaconProcess struct {

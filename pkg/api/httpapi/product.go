@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/mesh"
-	"github.com/sanskar/beacon/pkg/query"
-	"github.com/sanskar/beacon/pkg/sim"
+	"github.com/sanskarpan/beacon/pkg/mesh"
+	"github.com/sanskarpan/beacon/pkg/query"
+	"github.com/sanskarpan/beacon/pkg/sim"
 )
 
 // --- Prepared queries (TODO-019) ---

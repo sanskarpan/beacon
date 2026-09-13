@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/clock"
 )
 
 // MemoryMembership is an in-process membership implementation for tests and sim.

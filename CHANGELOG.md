@@ -2,6 +2,12 @@
 
 All notable changes to `beacon` are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **BREAKING:** Go module path `github.com/sanskar/beacon` → `github.com/sanskarpan/beacon` (repo URL). Update imports: `sed -i 's|github.com/sanskar/beacon|github.com/sanskarpan/beacon|g'`. Old path frozen at `v0.1.0` on proxy.
+- `docs/assets/demo.gif` regenerated with realistic terminal frames (6× 960×540, `python3 + PIL` via `python3.12 /tmp/gen_demo.py`).
+
 ## [v0.1.0] - 2026-09-12
 
 First tagged release. Includes the audit-complete baseline (`#184`: 65 TODOs,

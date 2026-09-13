@@ -3,7 +3,7 @@ package health
 import (
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 // TestSynctest_HysteresisTransition verifies the hysteresis state machine

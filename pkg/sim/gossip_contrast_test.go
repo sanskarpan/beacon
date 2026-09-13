@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/sim"
+	"github.com/sanskarpan/beacon/pkg/sim"
 )
 
 func TestMeasureGossipContrast(t *testing.T) {

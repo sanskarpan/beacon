@@ -8,9 +8,9 @@ import (
 	"time"
 
 	miedns "github.com/miekg/dns"
-	beacondns "github.com/sanskar/beacon/pkg/api/dns"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/store"
+	beacondns "github.com/sanskarpan/beacon/pkg/api/dns"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/store"
 )
 
 // TODO-023: DNS p99 < 2 ms benchmark.

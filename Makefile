@@ -1,7 +1,7 @@
 .PHONY: build test test-race test-integration proto proto-verify console bench sim tidy lint lint-ci fmt coverage docker help clean vet govuln
 
 GO ?= go
-MODULE := github.com/sanskar/beacon
+MODULE := github.com/sanskarpan/beacon
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -s -w -X main.version=$(VERSION)
 

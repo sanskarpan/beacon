@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/gossip"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/gossip"
 )
 
 // infectionCfg is the transport model used for the O(log N) proof: real

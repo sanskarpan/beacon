@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/api/httpapi"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/gossip"
-	"github.com/sanskar/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/api/httpapi"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/gossip"
+	"github.com/sanskarpan/beacon/pkg/store"
 )
 
 func TestHTTPLifecycle(t *testing.T) {

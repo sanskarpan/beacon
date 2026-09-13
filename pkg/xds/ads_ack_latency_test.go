@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/store"
-	"github.com/sanskar/beacon/pkg/xds"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/xds"
 )
 
 // TestADS_PushACKLatency1k (TODO-032):

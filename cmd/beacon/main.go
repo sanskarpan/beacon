@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/sim"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/sim"
 )
 
 // strings used for yaml suffix checks

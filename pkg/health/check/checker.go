@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 // Checker runs one probe.

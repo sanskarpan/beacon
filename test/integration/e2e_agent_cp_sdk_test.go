@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/agent"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/sdk"
-	"github.com/sanskar/beacon/pkg/store"
-	rstore "github.com/sanskar/beacon/pkg/store/raft"
-	"github.com/sanskar/beacon/pkg/xds"
-	"github.com/sanskar/beacon/test/integration"
+	"github.com/sanskarpan/beacon/pkg/agent"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/sdk"
+	"github.com/sanskarpan/beacon/pkg/store"
+	rstore "github.com/sanskarpan/beacon/pkg/store/raft"
+	"github.com/sanskarpan/beacon/pkg/xds"
+	"github.com/sanskarpan/beacon/test/integration"
 )
 
 // E2E: agent register → catalog; delete → put back; wipe → repopulate; restart from disk.

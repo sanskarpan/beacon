@@ -3,8 +3,8 @@ package health_test
 import (
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/health"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/health"
 )
 
 func TestHysteresis_FlappingProducesZeroTransitions(t *testing.T) {

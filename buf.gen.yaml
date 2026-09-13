@@ -5,9 +5,9 @@ plugins:
     out: .
     opt:
       - paths=import
-      - module=github.com/sanskar/beacon
+      - module=github.com/sanskarpan/beacon
   - remote: buf.build/grpc/go:v1.5.1
     out: .
     opt:
       - paths=import
-      - module=github.com/sanskar/beacon
+      - module=github.com/sanskarpan/beacon

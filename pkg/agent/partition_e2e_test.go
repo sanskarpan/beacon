@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/agent"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/health"
+	"github.com/sanskarpan/beacon/pkg/agent"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/health"
 )
 
 // partitionClient is a CatalogClient that can simulate network partition

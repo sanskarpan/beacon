@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/health/outlier"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/health/outlier"
 )
 
 func TestMaxEjectionPercent(t *testing.T) {

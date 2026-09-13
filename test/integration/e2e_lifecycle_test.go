@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/test/integration"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/test/integration"
 )
 
 // E2E: full HTTP lifecycle — register → list → health filter → blocking query →

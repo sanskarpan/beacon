@@ -3,7 +3,7 @@ package sim_test
 import (
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/sim"
+	"github.com/sanskarpan/beacon/pkg/sim"
 )
 
 func TestScenarios(t *testing.T) {

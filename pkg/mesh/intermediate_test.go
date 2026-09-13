@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/mesh"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/mesh"
 )
 
 // TestIntermediateCAHierarchy (TODO-033): root → intermediate → leaf; the leaf

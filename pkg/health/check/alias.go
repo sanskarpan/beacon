@@ -3,7 +3,7 @@ package check
 import (
 	"context"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 // AliasLookup resolves another service's aggregate health.

@@ -1,4 +1,4 @@
-module github.com/sanskar/beacon
+module github.com/sanskarpan/beacon
 
 go 1.27.0
 

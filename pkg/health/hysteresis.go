@@ -2,7 +2,7 @@
 package health
 
 import (
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 // Hysteresis suppresses flapping.

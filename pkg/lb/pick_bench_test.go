@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/lb"
+	"github.com/sanskarpan/beacon/pkg/lb"
 )
 
 // BenchmarkP2CPick measures single P2C pick latency (SPEC §20 target: < 200 ns).

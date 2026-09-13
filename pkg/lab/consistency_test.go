@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/lab"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/lab"
 )
 
 func TestConsistencyLab_PartitionDivergenceAndHeal(t *testing.T) {

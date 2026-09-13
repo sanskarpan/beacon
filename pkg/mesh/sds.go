@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/clock"
 )
 
 // SDSResource is a secret pushed over ADS (SDS).

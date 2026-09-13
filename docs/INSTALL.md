@@ -26,23 +26,12 @@ Installs `beacon`, `beacon-server`, and `beacon-agent`.
 
 ## Option 2 — `go install` (Go 1.27+)
 
-Canonical command (works once `go.mod` is realigned to `v2`):
-
 ```bash
 go install github.com/sanskarpan/beacon/cmd/beacon-server@latest
+go install github.com/sanskarpan/beacon/cmd/beacon@latest
+go install github.com/sanskarpan/beacon/cmd/beacon-agent@latest
+# binaries land in $(go env GOPATH)/bin
 ```
-
-> **Module-path caveat:** `go.mod` still declares `github.com/sanskar/beacon`
-> while the repo lives at `github.com/sanskarpan/beacon`, so the one-liner
-> above fails with a module-path mismatch until the v2 realignment lands.
-> **Working command today** — clone and install from source:
->
-> ```bash
-> git clone https://github.com/sanskarpan/beacon.git
-> cd beacon
-> go install ./cmd/beacon-server ./cmd/beacon ./cmd/beacon-agent
-> # binaries land in $(go env GOPATH)/bin
-> ```
 
 ## Option 3 — Docker (GHCR, no Go toolchain needed)
 

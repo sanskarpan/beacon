@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
 )
 
 // TTLCheck is push-based: the service reports pass/warn/fail. Absence is failure.

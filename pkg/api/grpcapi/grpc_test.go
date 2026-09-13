@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/api/grpcapi"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/store"
-	"github.com/sanskar/beacon/pkg/watch"
+	"github.com/sanskarpan/beacon/pkg/api/grpcapi"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/watch"
 )
 
 func TestWatchSnapshotThenDelta(t *testing.T) {

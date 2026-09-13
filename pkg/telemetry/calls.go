@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
 )
 
 // EdgeKey identifies a directed call relationship.

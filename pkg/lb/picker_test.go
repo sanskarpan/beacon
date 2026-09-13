@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/lb"
+	"github.com/sanskarpan/beacon/pkg/lb"
 )
 
 func eps(n int) []*lb.Endpoint {

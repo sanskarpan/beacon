@@ -3,7 +3,7 @@ package lb_test
 import (
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/lb"
+	"github.com/sanskarpan/beacon/pkg/lb"
 )
 
 func TestLocalityPrefersLocalZone(t *testing.T) {

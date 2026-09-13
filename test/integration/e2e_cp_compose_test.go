@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 func TestE2E_CPComposePartition(t *testing.T) {

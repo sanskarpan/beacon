@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/events"
-	"github.com/sanskar/beacon/pkg/gossip"
-	"github.com/sanskar/beacon/pkg/health"
-	"github.com/sanskar/beacon/pkg/store"
-	gstore "github.com/sanskar/beacon/pkg/store/gossip"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/events"
+	"github.com/sanskarpan/beacon/pkg/gossip"
+	"github.com/sanskarpan/beacon/pkg/health"
+	"github.com/sanskarpan/beacon/pkg/store"
+	gstore "github.com/sanskarpan/beacon/pkg/store/gossip"
 )
 
 // TODO-038: Agent with 100 local services memory/CPU benchmark.

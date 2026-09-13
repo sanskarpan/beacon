@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 // TCPCheck dials an address and immediately closes.

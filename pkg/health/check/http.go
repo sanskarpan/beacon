@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 // HTTPCheck GETs a URL. 2xx=passing, 429=warning, else critical. No redirects.

@@ -9,7 +9,7 @@ import (
 
 	gswim "gossip-system/pkg/swim"
 
-	"github.com/sanskar/beacon/pkg/gossip"
+	"github.com/sanskarpan/beacon/pkg/gossip"
 )
 
 // Ensure Adapter implements gossip.Membership.

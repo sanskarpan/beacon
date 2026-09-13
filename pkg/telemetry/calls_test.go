@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sanskar/beacon/pkg/clock"
-	"github.com/sanskar/beacon/pkg/telemetry"
+	"github.com/sanskarpan/beacon/pkg/clock"
+	"github.com/sanskarpan/beacon/pkg/telemetry"
 )
 
 func TestCallGraph_RPSAndErrorRate(t *testing.T) {

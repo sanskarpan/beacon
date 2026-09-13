@@ -8,12 +8,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/api/httpapi"
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/query"
-	"github.com/sanskar/beacon/pkg/store"
-	"github.com/sanskar/beacon/pkg/watch"
-	"github.com/sanskar/beacon/pkg/xds"
+	"github.com/sanskarpan/beacon/pkg/api/httpapi"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/query"
+	"github.com/sanskarpan/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/watch"
+	"github.com/sanskarpan/beacon/pkg/xds"
 )
 
 func TestPreparedQueryHTTP_CRUDAndExecute(t *testing.T) {

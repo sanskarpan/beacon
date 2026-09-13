@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/catalog"
-	"github.com/sanskar/beacon/pkg/sdk"
-	"github.com/sanskar/beacon/pkg/store"
+	"github.com/sanskarpan/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/sdk"
+	"github.com/sanskarpan/beacon/pkg/store"
 	"google.golang.org/grpc/resolver"
 )
 

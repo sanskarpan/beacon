@@ -3,7 +3,7 @@ package mesh
 import (
 	"encoding/json"
 
-	"github.com/sanskar/beacon/pkg/xds"
+	"github.com/sanskarpan/beacon/pkg/xds"
 )
 
 // SDSXDS adapts SDS for xDS TypeSecret serving.

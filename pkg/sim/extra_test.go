@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/sim"
+	"github.com/sanskarpan/beacon/pkg/sim"
 )
 
 func TestRolloutAndZoneFailure(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sanskar/beacon/pkg/catalog"
+	"github.com/sanskarpan/beacon/pkg/catalog"
 )
 
 // TODO-022: Rate-limit edge cases — per-node with clear error.
