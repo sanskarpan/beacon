@@ -5,12 +5,21 @@ Pick one, then verify with the health check at the bottom.
 
 ## Option 1 — Homebrew (macOS / Linux)
 
-The formula is published to `sanskarpan/homebrew-tap` by GoReleaser on every
-`vX.Y.Z` tag.
+The formula is published to `sanskarpan/beacon` (`Formula/beacon.rb` in this
+repo) by GoReleaser on every `vX.Y.Z` tag. Homebrew 4.4+ requires an explicit
+trust for non-core taps:
 
 ```bash
+brew trust --tap sanskarpan/beacon
+brew tap sanskarpan/beacon https://github.com/sanskarpan/beacon
 brew install sanskarpan/beacon/beacon
 beacon-server --http :8500 --dns :8600 --consistency ap --node server-1
+```
+
+Direct URL (no tap) also works:
+
+```bash
+brew install https://raw.githubusercontent.com/sanskarpan/beacon/main/Formula/beacon.rb
 ```
 
 Installs `beacon`, `beacon-server`, and `beacon-agent`.
