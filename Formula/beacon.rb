@@ -5,12 +5,12 @@
 class Beacon < Formula
   desc "Consul-class service discovery — gossip + Raft catalog, DNS/HTTP/gRPC/xDS"
   homepage "https://github.com/sanskarpan/beacon"
-  version "0.1.0"
+  version "0.2.0"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/sanskarpan/beacon/releases/download/v0.1.0/beacon_0.1.0_darwin_amd64.tar.gz"
-      sha256 "25209a3dbbd0e098e057d8d7b2f2ac2e04dd3205ecef3968f40726bf835a2fa3"
+      url "https://github.com/sanskarpan/beacon/releases/download/v0.2.0/beacon_0.2.0_darwin_amd64.tar.gz"
+      sha256 "fc2b447ee4f691fd51fb8940924f6d616bbd9661e3f608be7395d3c1eda62381"
 
       define_method(:install) do
         bin.install "beacon"
@@ -19,8 +19,8 @@ class Beacon < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/sanskarpan/beacon/releases/download/v0.1.0/beacon_0.1.0_darwin_arm64.tar.gz"
-      sha256 "59f0032e4039e1ec74aeccd85287ede4635a9dcd2d7ec71cee2a04baa9e76f19"
+      url "https://github.com/sanskarpan/beacon/releases/download/v0.2.0/beacon_0.2.0_darwin_arm64.tar.gz"
+      sha256 "f8e1d8d5a63ee590c0a342d80c60d6f07a92e28d2b98344c9c5dbd4733e1b6df"
 
       define_method(:install) do
         bin.install "beacon"
@@ -32,8 +32,8 @@ class Beacon < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/sanskarpan/beacon/releases/download/v0.1.0/beacon_0.1.0_linux_amd64.tar.gz"
-      sha256 "bff267156c329571fd831a1aacf90833f780abc77b1286ad8245110b6b1f4ca8"
+      url "https://github.com/sanskarpan/beacon/releases/download/v0.2.0/beacon_0.2.0_linux_amd64.tar.gz"
+      sha256 "6e71003d9149b2e7dc2447d2ac4a54562ff2726446cd201b562e9cdee90402d2"
       define_method(:install) do
         bin.install "beacon"
         bin.install "beacon-agent"
@@ -41,8 +41,8 @@ class Beacon < Formula
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/sanskarpan/beacon/releases/download/v0.1.0/beacon_0.1.0_linux_arm64.tar.gz"
-      sha256 "4c7651f29f2917a579c23950054b74cf3d68a23853c810f8eab2398580195bf4"
+      url "https://github.com/sanskarpan/beacon/releases/download/v0.2.0/beacon_0.2.0_linux_arm64.tar.gz"
+      sha256 "0a6078f69b34bee610de26ca7caacf5597fd3410d3f32f86309ad517d967146f"
       define_method(:install) do
         bin.install "beacon"
         bin.install "beacon-agent"
