@@ -46,9 +46,7 @@ Drop the file at `docs/assets/demo.gif` and embed in `README.md`:
 ![beacon demo](docs/assets/demo.gif)
 ```
 
-Screenshots and diagrams go in `docs/assets/` as `topology.svg`, `timeline.svg`, `consistency-lab.svg`
-(rendered above). To regenerate the animated GIF without a screen recorder:
-
-```bash
-python3 make_demo_gif.py  # 6 frames, 960px wide, <2MB → docs/assets/demo.gif
-```
+Screenshots and diagrams go in `docs/assets/` as `topology.svg`, `timeline.svg`, and
+`consistency-lab.svg` (rendered above). The checked-in GIF is captured from the running
+browser console, not generated terminal artwork. Keep the capture at 1440×900 and downscale
+to 960×600 so the console text remains legible in README and Pages.

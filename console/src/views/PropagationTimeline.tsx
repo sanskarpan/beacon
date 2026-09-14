@@ -42,6 +42,7 @@ export default function PropagationTimeline() {
       events.filter((e) =>
         [
           "instance.registered",
+          "instance.deregistered",
           "gossip.delta",
           "watch.notified",
           "propagation.converged",

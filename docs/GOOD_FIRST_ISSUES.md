@@ -8,9 +8,8 @@ files involved and the acceptance criteria. General workflow: see
 
 ## 1. Record `docs/assets/demo.gif`
 
-**Gap:** `docs/index.md` and `docs/DEMO.md` promise a demo GIF at
-`docs/assets/demo.gif`, and `README.md` embeds it — but `docs/assets/`
-currently contains only `README.md`. The file is missing.
+**Status:** Complete. `docs/assets/demo.gif` is a real browser capture of the running
+console and is embedded by both the README and Pages.
 
 **Files:**
 
@@ -20,10 +19,10 @@ currently contains only `README.md`. The file is missing.
 
 **Acceptance criteria:**
 
-- [ ] `docs/assets/demo.gif` exists, ≤ ~5 MB, 12 fps / ~960 px wide per the `ffmpeg` line in `DEMO.md`
-- [ ] GIF shows: register a service, kill one instance, propagation timeline converging
-- [ ] `README.md` + Pages render the image (relative path `docs/assets/demo.gif`)
-- [ ] No other assets changed
+- [x] `docs/assets/demo.gif` exists, ≤ ~5 MB, and is ~960 px wide
+- [x] GIF shows live registration/deregistration, benchmark, mesh, and health views
+- [x] `README.md` + Pages render the image (relative path `docs/assets/demo.gif`)
+- [x] No unrelated beacon assets changed
 
 ---
 

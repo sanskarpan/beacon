@@ -6,7 +6,7 @@ All notable changes to `beacon` are documented here. Format based on [Keep a Cha
 
 ### Changed
 - **BREAKING:** Go module path `github.com/sanskar/beacon` → `github.com/sanskarpan/beacon` (repo URL). Update imports: `sed -i 's|github.com/sanskar/beacon|github.com/sanskarpan/beacon|g'`. Old path frozen at `v0.1.0` on proxy.
-- `docs/assets/demo.gif` regenerated with realistic terminal frames (6× 960×540, `python3.12 + PIL`).
+- `docs/assets/demo.gif` replaced with a real browser capture of the running console (960×600, live SSE events, benchmark chart, mesh topology, and health inspector).
 
 ### Fixed
 - `docs/INSTALL` Homebrew trust note for 7.x (`brew trust --tap`)
